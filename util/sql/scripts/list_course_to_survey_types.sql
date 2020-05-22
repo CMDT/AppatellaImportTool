@@ -1,0 +1,1 @@
+select * from course_to_survey_types;

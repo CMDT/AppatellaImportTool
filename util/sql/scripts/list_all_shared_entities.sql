@@ -1,0 +1,1 @@
+SELECT id_of_shared_entity as id FROM shared;
