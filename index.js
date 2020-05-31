@@ -1,24 +1,20 @@
 'use strict';
 
-var debug = require('debug');
-var error = debug('app:error');
-var log = debug('app:log');
+var DEFAULT_LOCAL_PORT = 8000;
+var DEFAULT_REMOTE_PORT = 443;
+var DEFAULT_LOCAL_SCHEME = 'http';
+var DEFAULT_REMOTE_SCHEME = 'https';
 
+var LOCALHOST = 'localhost';
+
+var netutil = require('./util/system/network');
 var fs = require('fs');
 
 
-// set this namespace to log via console.log 
-log.log = console.log.bind(console); // don't forget to bind to console! 
-debug.log = console.info.bind(console);
-error('LOGGING: Errors to stdout via console.info');
-log('LOGGING: Log to stdout via console.info');
-log("ENVIRONMENT: **********************");
-log(process.env);
-log("**********************");
 
 
 var getAsBoolean = function(key){
-  var result = false; 
+  var result = false;
 
   var ev = process.env[key] || false;
 
@@ -27,130 +23,248 @@ var getAsBoolean = function(key){
   }
 
   return result;
-
 }
 
-
-
-// builds a configuration for the client app, from environment variables 
-// so that the server can be deployed to multiple domains from the same source
-var getAuthClientConfig = function(){
+var getSwaggerUIConfig = function(){
   var result = {};
 
-    // Used in Auth0's authentication process to identify the client
-    if(!process.env.AUTH_CLIENT_ID) throw new Error("undefined in environment: AUTH_CLIENT_ID");
-    if(!process.env.AUTH_APP_NAME) throw new Error("undefined in environment: AUTH_APP_NAME");
-    if(!process.env.AUTH_AUDIENCE) throw new Error("undefined in environment: AUTH_AUDIENCE");
+  // the port on which the server must listen
+  result.existingPort = process.env.PORT;
 
-    
-    result.clientId = process.env.AUTH_CLIENT_ID;
-    result.appName = process.env.AUTH_APP_NAME;
-    result.clientSecret = "your-client-secret-if-required";
-    result.realm =  "your-realms";
-    result.scopeSeparator =  " ";
-    result.additionalQueryStringParams = {};
-    result.additionalQueryStringParams.audience = process.env.AUTH_AUDIENCE;
-    //result.additionalQueryStringParams.response_type = "token";
-    result.additionalQueryStringParams.nonce = "123456";
+  // scheme advertised by swagger doc as that over which to communicate with the API
+  result.scheme = process.env.API_SCHEME;
+
+  // domain advertised by swagger doc as that over which to communicate with the API
+  result.domain = process.env.API_DOMAIN;
+
+  // port advertised by swagger doc as that over which to communicate with the API
+  // in the swagger doc, this value overrides the value set by PORT
+  result.port = process.env.API_PORT;
 
   return result;
 }
 
 
-// client configuration file is written to the folder which gets downloaded to the SPWA in the browser.
-var writeAuthClientConfig = function (config){
-  var authenticationClientConfig = config;
-  var authenticationClientContent = "var auth_config = " + JSON.stringify(authenticationClientConfig);
-  fs.writeFileSync('./import/swagger-ui-v2/authproviderconfig.js', authenticationClientContent);
+var getSystemConfig = function(){
+  var result = {};
+
+  // the postgres-scheme URL of the Postgres database
+  if(!process.env.DATABASE_URL) throw new Error("undefined in environment: DATABASE_URL");
+  result.dbUrl = process.env.DATABASE_URL;
+
+  // if the DB is local, dbNeedsSSL must be set to false
+  // if the DB is remote, dbNeedsSSL must be set to true
+  result.dbNeedsSSL = getAsBoolean("DB_NEEDS_SSL");
+
+  return result;
 }
 
 
 
 
 
+
+// Function which collates information and injects it to the swaggerdoc;
+// the document which is read by clients of the interface.
+//
+// Information is read from the envornment variables:
+//
+// PORT: this is the actual port the system is listening on.
+// For instance, heroku will define this as a read-only value.
+// API_PORT: this is the port the YAML will advertise the interface on
+// API_DOMAIN: this is the domain the YAML will advertise the interface on
+// API_SCHEME: this is the scheme the YAML will advertise the interface on.
+// If defined, these override the settings in the yaml
+//
+// Deployment:
+// Heroku
+// - assigns its own PORT value
+// - developer must define these values for inclusion in the YAML
+// -- API_DOMAIN,
+// -- API_SCHEME
+// -- API_PORT
+// Other server
+// - may assign the PORT value
+// - developer must define these values for inclusion in the YAML
+// -- API_DOMAIN,
+// -- API_SCHEME
+// -- API_PORT
+// localhost
+// - may assign the PORT value
+// - system should automatically define API_DOMAIN with IP Address of server on network
+// - API_SCHEME should be defined by developer, but defaults to http
+// - API_PORT should be defined by developer, but defaults to 8000
+//
+// RULES for inclusion in YAML
+// API_DOMAIN overrides YAML. If API_DOMAIN == 'localhost', we substitute IP address of server (so we can create QR codes which work)
+// PORT overrides YAML. API_PORT overrides PORT (so we can mask heroku)
+// if on heroku, PORT is ignored. Must use API_PORT
+// if on other server can just define PORT
+// if on localhost can just define PORT
+// if on localhost, PORT, API_PORT default to DEFAULT_LOCAL_PORT
+// API_SCHEME overrides YAML.
+// if on localhost, API_SCHEME defaults to DEFAULT_LOCAL_SCHEME
+//
+// returns a result containing the swaggerDoc, and summary info
+
+var resolveSwaggerDoc = function(swaggerDoc, swaggerUIConfig){
+
+  var result = {
+    swaggerDoc: null,
+    summary: {
+      listenPort: null,
+      scheme: null,
+      address: null,
+      domain: null
+    }
+  }
+
+  var doc = {};
+  doc.scheme = swaggerDoc.schemes[0];  //WILL THROW IF SCHEMES NOT DEFINED IN DOC
+  doc.domain = swaggerDoc.host.split(':')[0];  //WILL THROW IF HOST NOT DEFINED IN DOC
+  doc.port = swaggerDoc.host.split(':')[1];  //WILL THROW IF PORT NOT DEFINED IN DOC
+
+
+  var address = null;
+  var domain = doc.domain;
+  var isLocalHost = false;
+
+  // RULES: domain overrides swagger doc
+  console.log("swagger doc domain:")
+
+  if(swaggerUIConfig.domain){
+    console.log("overriding with: %s", swaggerUIConfig.domain);
+    domain = swaggerUIConfig.domain;
+  }else{
+    console.log("WARNING: no domain override found. Swagger doc domain is unchanged.")
+  }
+
+  doc.domain = domain;
+
+  if(doc.domain == LOCALHOST){
+    isLocalHost = true;
+    var ipAddress = netutil.getIPAddress();
+    console.log("localhost resolves to: " + ipAddress);
+    address = ipAddress;
+  }else{
+    address = doc.domain;
+  }
+
+
+
+
+
+  console.log("swagger doc port:");
+  var port = null;
+  var listenPort = swaggerUIConfig.existingPort; // ALWAYS the PORT env variable
+
+  // RULES: existing port overrides YAML
+  if(swaggerUIConfig.existingPort){
+    port = swaggerUIConfig.existingPort;
+    console.log("overriding swagger doc port with existing port: " + port);
+  }
+  //RULES: api_port overrides both
+  if(swaggerUIConfig.port){
+    port = swaggerUIConfig.port;
+    console.log("overriding swagger doc port with port: " + port);
+  }
+
+  if(!port){
+    if(isLocalHost){
+      port = DEFAULT_LOCAL_PORT;
+      console.log("overriding swagger doc with local port: " + port);
+    }else{
+      doc.port = DEFAULT_REMOTE_PORT;
+      console.log("overriding swagger doc with remote port: " + port);
+    }
+  }
+
+  doc.port = port;
+
+  console.log("swagger doc scheme:");
+
+  var scheme = null;
+
+  if(swaggerUIConfig.scheme){
+    scheme = swaggerUIConfig.scheme;
+    console.log("overriding swagger doc with scheme: " + scheme);
+  }
+
+  if(!scheme){
+    if(isLocalHost){
+      scheme = DEFAULT_LOCAL_SCHEME;
+      console.log("overriding swagger doc with default local scheme: " + scheme);
+    }else{
+      scheme = DEFAULT_REMOTE_SCHEME;
+      console.log("overriding swagger doc with default remote scheme: " + scheme);
+    }
+  }
+
+  doc.scheme = scheme;
+
+  var hostAddrPort = doc.domain + ":" + doc.port;
+  var schemes = [doc.scheme];
+
+  swaggerDoc.host = hostAddrPort;
+  swaggerDoc.schemes = schemes;
+
+  result = {
+    swaggerDoc: swaggerDoc,
+    summary: {
+      listenPort: listenPort,
+      scheme: scheme,
+      domain: domain,
+      address: address,
+      port: port
+    }
+  }
+
+  return result;
+}
+
 var initialise = function () {
 
-  // URL provided by the Auth0 authentication PaaS
-  if(!process.env.AUTH_URL) throw new Error("undefined in environment: AUTH_URL");
-  var authUrl = process.env.AUTH_URL;
 
-  // URL to the underlying postgres database.
-  // This is supplied by Heroku, but is a standard postgres URL
-  // See https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING
-  // in particular, section 34.1.1.2. Connection URIs
-  if(!process.env.DATABASE_URL) throw new Error("undefined in environment: DATABASE_URL");
-  var dbUrl = process.env.DATABASE_URL;
-
-  // This is TRUE if the connection is remote (Heroku / AWS) false if local.
-  var dbNeedsSSL = getAsBoolean("DB_NEEDS_SSL");
-
-  // RSA Authentication, supplied by Auth0 authentication PaaS.
-  if(!process.env.RSA_URI) throw new Error("undefined in environment: RSA_URI");
-  var rsaUri = process.env.RSA_URI;
-
-  var consumerApiAddress = process.env.CONSUMER_API_ADDRESS;
-  var serverPort = process.env.PORT || 8000;
-
-  log("Node: " + process.version);
-  log("SSL: dbNeedsSSL?: " + dbNeedsSSL);
-
-
-  var cors = require('cors');
   var app = require('connect')();
   var http = require('http');
-  var path = require('path');
   var swaggerTools = require('swagger-tools');
   var jsyaml = require('js-yaml');
   var database = require('./util/database/database');
   var data = require('./util/data/data');
-  var auth = require('./util/authentication/authentication');
-  var exp = require('./util/export/exportService');
-
-  // Cross Origin Requests - must have this, as we are an API.
-  // Without it, browsers running SPWAs from domains different to ours (e.g. github pages)
-  // will reject HTTP requests during pre-flight check.
-  app.use(cors());
 
   // swaggerRouter configuration
   var options = {
-    swaggerUi: '/swagger.json',
     controllers: './controllers',
-    useStubs: process.env.NODE_ENV === 'development' ? true : false // Conditionally turn on stubs (mock mode)
   };
 
-  // The Swagger document which defines the API, and is used to build the swagger UI SPWA at runtime, in the browser.
-  // (require it, build it programmatically, fetch it from a URL, ...)
+  // The Swagger HTTP REST interface document (require it, build it programmatically, fetch it from a URL, ...)
   var spec = fs.readFileSync('./api/swagger.yaml', 'utf8');
   var swaggerDoc = jsyaml.safeLoad(spec);
-  var consumerApiPort = swaggerDoc.host.split(':')[1];  //WILL THROW IF PORT NOT DEFINED IN DOC
-  var consumerApiScheme = swaggerDoc.schemes[0];  //WILL THROW IF SCHEMES NOT DEFINED IN DOC
-  
-  // initialise main components. We need some of this to change the swagger doc.
-  writeAuthClientConfig(getAuthClientConfig());
-  database.initialise(dbUrl, dbNeedsSSL);
-  auth.initialise(rsaUri);
-  data.initialise(consumerApiScheme, consumerApiAddress, consumerApiPort);
-  exp.initialise();
 
-  // change the standard definition to suit the server environment
-  var hostAddrPort = data.getConsumerApiAddress() + ":" + data.getConsumerApiPort(); 
-  swaggerDoc.host = hostAddrPort;
+  // fetch categorised system parameters from environment variables.
+  var systemConfig = getSystemConfig();
+  var swaggerUIConfig = getSwaggerUIConfig();
 
-  var secDefs = swaggerDoc.securityDefinitions;
-  for (var secDef in secDefs) {
-      console.log("changing: " + secDefs[secDef].authorizationUrl + " : to : " + authUrl);
-      secDefs[secDef].authorizationUrl = authUrl;
-  }
+  var swaggerDocResolve = resolveSwaggerDoc(swaggerDoc, swaggerUIConfig);
+
+  swaggerDoc = swaggerDocResolve.swaggerDoc;
+  var listenPort = swaggerDocResolve.summary.listenPort;
+
+
+  database.initialise(
+    systemConfig.dbUrl,
+    systemConfig.dbNeedsSSL);
+
+  data.initialise(
+    systemConfig.systemId,
+    swaggerDocResolve.summary.scheme,
+    swaggerDocResolve.summary.address,
+    swaggerDocResolve.summary.port);
 
   // Initialize the Swagger middleware
   swaggerTools.initializeMiddleware(swaggerDoc, function (middleware) {
     // Interpret Swagger resources and attach metadata to request - must be first in swagger-tools middleware chain
     app.use(middleware.swaggerMetadata());
-
-    // Provide the security handlers
-    app.use(middleware.swaggerSecurity({
-      appatella_researcher_auth: auth.appatella_researcher_auth
-    }));
 
     // Validate Swagger requests
     app.use(middleware.swaggerValidator());
@@ -160,24 +274,23 @@ var initialise = function () {
 
     // Serve the Swagger documents and Swagger UI
     app.use(middleware.swaggerUi(
-       {swaggerUiDir: path.join(__dirname, './import/swagger-ui-v2')}
+      // use default Swagger Ui implementation
     ));
 
     // Start the server
-    var server = http.createServer(app).listen(serverPort, function () {
+    var server = http.createServer(app).listen(listenPort, function () {
       var address = data.getConsumerApiAddress();
-      log('SERVER: listening on %s , port %d ', address, serverPort);
-    });    
+      console.log('SERVER: listening on %s , port %d ', address, listenPort);
+    });
   });
 }
 
-
-initialise();
-
-
 // this is for unhandled async rejections. See https://blog.risingstack.com/mastering-async-await-in-nodejs/
-process.on('unhandledRejection', (err) => {  
+process.on('unhandledRejection', (err) => {
+  console.log("GOT HERE !!!");
   console.error(err);
-  //process.exit(1);
+  // process.exit(1);
 });
 
+
+initialise();

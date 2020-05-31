@@ -14,6 +14,10 @@ const dbApi = require('../database/database');
 const functionsIndex = require('../functions/functionsIndex');
 const definitions = require('../definitions/definitions');
 
+const sevenBin = require ('7zip-bin');
+const node7z = require('node-7z');
+
+
 const fsdef = definitions.fileSystem;
 
 
@@ -545,10 +549,40 @@ async function compressAndLock(exportRequestId) {
   });
 }
 
+// async function unlockAndDecompress(data, secret, path) {
+
+
+//   const pathTo7zip = sevenBin.path7za
+//   const seven = extractFull('./archive.7z', './output/dir/', {
+//     $bin: pathTo7zip
+//   })
+
+
+
+//   var myImportZip = new Minizip(data);
+
+//   //var options = { encoding: "utf8" }
+//   var options = {};
+  
+//   if (secret) {
+//     options.password = secret;
+//   }
+//   try {
+//     myImportZip.list(options).forEach(file => {
+//       var zipSubFileData = myImportZip.extract(file.filepath, options);
+//       //console.log("attempting to write file:", file.filepath, "to:", path);
+//       fs.writeFileSync(path + "/" + file.filepath, zipSubFileData)
+//     })
+//   } catch (error) {
+//     throw (error)
+//   }
+// }
 async function unlockAndDecompress(data, secret, path) {
   var myImportZip = new Minizip(data);
 
-  var options = { encoding: "utf8" }
+  //var options = { encoding: "utf8" }
+  var options = {};
+  
   if (secret) {
     options.password = secret;
   }

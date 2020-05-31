@@ -19,7 +19,6 @@ class Sql {
       
       }
 
-
     static createTableQuery(tableName, query) {
         var result = dbApi.createTabularQuery(query);
         result.name = tableName;

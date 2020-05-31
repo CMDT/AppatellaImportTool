@@ -1,15 +1,13 @@
 ---
 swagger: "2.0"
 info:
-  description: "This API allows access to the database for research purposes. Access\
-    \ is restricted. If you have a research account, you will be able to export only\
-    \ those courses for which you have permission. These courses will be further anonymmised."
+  description: "This tool imports an encrypted Appatella export file into a Postgres database. See the [README.md](https://github.com/CMDT/AppatellaImportTool/blob/master/README.md) file for details."
   version: "1.5.0"
-  title: "Appatella Research API"
+  title: "Appatella Import Tool"
   contact:
     name: "DigitalLabs@MMU"
     email: "l.cooper@mmu.ac.uk"
-host: "localhost:8003"
+host: "localhost:8004"
 basePath: "/apis"
 schemes:
 - "http"
@@ -36,17 +34,14 @@ paths:
         schema:
           $ref: "#/definitions/ReserveArg"
       responses:
-        200:
+        "200":
           description: "Success"
           schema:
             $ref: "#/definitions/inline_response_200"
-        400:
+        "400":
           description: "Bad request"
-        500:
+        "500":
           description: "Error 500"
-      security:
-      - appatella_researcher_auth:
-        - "researcher"
       x-swagger-router-controller: "Export"
   /requestExport/:
     get:
@@ -66,15 +61,12 @@ paths:
         required: true
         type: "string"
       responses:
-        200:
+        "200":
           description: "Success"
           schema:
             $ref: "#/definitions/inline_response_200_1"
-        400:
+        "400":
           description: ""
-      security:
-      - appatella_researcher_auth:
-        - "researcher"
       x-swagger-router-controller: "Export"
   /exportProgress/:
     get:
@@ -92,15 +84,12 @@ paths:
         required: true
         type: "string"
       responses:
-        200:
+        "200":
           description: "Status 200"
           schema:
             $ref: "#/definitions/inline_response_200_2"
-        400:
+        "400":
           description: ""
-      security:
-      - appatella_researcher_auth:
-        - "researcher"
       x-swagger-router-controller: "Export"
   /export/:
     get:
@@ -117,14 +106,11 @@ paths:
         required: true
         type: "string"
       responses:
-        200:
+        "200":
           description: "Status 200"
           schema:
             type: "string"
             format: "binary"
-      security:
-      - appatella_researcher_auth:
-        - "researcher"
       x-swagger-router-controller: "Export"
     delete:
       tags:
@@ -144,11 +130,8 @@ paths:
         required: false
         type: "string"
       responses:
-        200:
+        "200":
           description: "Status 200"
-      security:
-      - appatella_researcher_auth:
-        - "researcher"
       x-swagger-router-controller: "Export"
   /import/:
     post:
@@ -174,13 +157,10 @@ paths:
         required: true
         type: "string"
       responses:
-        200:
+        "200":
           description: "Status 200"
-        400:
+        "400":
           description: ""
-      security:
-      - appatella_researcher_auth:
-        - "researcher"
       x-swagger-router-controller: "Import"
   /analysisFunctions/:
     get:
@@ -192,15 +172,12 @@ paths:
       - "application/json"
       parameters: []
       responses:
-        200:
+        "200":
           description: "Status 200"
           schema:
             type: "array"
             items:
               $ref: "#/definitions/AnalysisFunctionDef"
-      security:
-      - appatella_researcher_auth:
-        - "researcher"
       x-swagger-router-controller: "Functions"
   /analysisParameterTypes:
     get:
@@ -212,23 +189,13 @@ paths:
       - "application/json"
       parameters: []
       responses:
-        200:
+        "200":
           description: "Status 200"
           schema:
             type: "array"
             items:
               type: "string"
-      security:
-      - appatella_researcher_auth:
-        - "researcher"
       x-swagger-router-controller: "Functions"
-securityDefinitions:
-  appatella_researcher_auth:
-    type: "oauth2"
-    authorizationUrl: "https://appatella.eu.auth0.com/authorize"
-    flow: "implicit"
-    scopes:
-      researcher: "read all deplayed course data"
 definitions:
   ReserveArg:
     type: "object"

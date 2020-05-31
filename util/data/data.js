@@ -72,16 +72,9 @@ var getConsumerApiPort = () => {
   return CONSUMER_API_PORT;
 }
 
-var createScopeInfo = (externalId, scopes) => {
-  return {
-    externalId: externalId,
-    scopes: scopes
-  }
-};
 
 module.exports = {
   initialise: initialise,
-  createScopeInfo: createScopeInfo,
   getConsumerApiScheme : getConsumerApiScheme,
   getConsumerApiAddress : getConsumerApiAddress,
   getConsumerApiPort: getConsumerApiPort
