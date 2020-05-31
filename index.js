@@ -8,6 +8,7 @@ var DEFAULT_REMOTE_SCHEME = 'https';
 var LOCALHOST = 'localhost';
 
 var netutil = require('./util/system/network');
+var filesystem = require('./util/system/filesystem');
 var fs = require('fs');
 
 
@@ -254,6 +255,7 @@ var initialise = function () {
   swaggerDoc = swaggerDocResolve.swaggerDoc;
   var listenPort = swaggerDocResolve.summary.listenPort;
 
+  filesystem.initialise();
 
   database.initialise(
     systemConfig.dbUrl,
@@ -264,6 +266,9 @@ var initialise = function () {
     swaggerDocResolve.summary.scheme,
     swaggerDocResolve.summary.address,
     swaggerDocResolve.summary.port);
+
+
+
 
   // Initialize the Swagger middleware
   swaggerTools.initializeMiddleware(swaggerDoc, function (middleware) {

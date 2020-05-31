@@ -33,6 +33,12 @@ module.exports = {
         result.stack = null;
         return result;
     },
+    create404Error:(message) => {
+        var result = new Error("Not Found: " + message);
+        result.statusCode = 404;
+        result.stack = null;
+        return result;
+    },
     createNotYetImplemented: (message) => {
         var result = new Error("Not yet implemented: " + message);
         result.statusCode = 500;

@@ -143,17 +143,21 @@ paths:
         \ before pushing into an empty, available research."
       operationId: "postImport"
       consumes:
-      - "multipart/form-data"
+      - "application/json"
       parameters:
-      - name: "snapshotZip"
-        in: "formData"
-        description: "A encrypted research snapshot."
+      - name: "source_path"
+        in: "query"
+        description: "The full path to your 7zip encrypted Appatella Export file."
         required: true
-        type: "file"
+        type: "string"
       - name: "secret"
-        in: "formData"
-        description: "The *password* used in file decryption. \n The `secret` was\
-          \ originaly supplied when requesting the export."
+        in: "query"
+        description: "The password used when the export was requested."
+        required: true
+        type: "string"
+      - name: "destination_db"
+        in: "query"
+        description: "The name of the destination database. If it exists, the database will be dropped, and a new one created, to hold the new data."
         required: true
         type: "string"
       responses:

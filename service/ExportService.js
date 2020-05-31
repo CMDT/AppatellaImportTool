@@ -1,6 +1,6 @@
 'use strict';
 var httpUtil = require('../util/http/http');
-var exportUtil = require('../util/export/export');
+var exportUtil = require('../util/service/importexport');
 
 
 exports.deleteExport = function(args, res, next) {

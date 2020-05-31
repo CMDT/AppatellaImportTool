@@ -2,14 +2,12 @@
 
 
 
-const errorApi = require('../error/error');
-const mkdirp = require('mkdirp');
 const fs = require('fs-extra');
 const Sql = require('../sql/sql');
 const dbApi = require('../database/database');
-const definitions = require('../definitions/definitions');
+const filesystem = require('../system/filesystem');
 
-const fsdef = definitions.fileSystem;
+const fsdef = filesystem.definitions;
 
 
 const OUTPUT_FILE_EXTENSION = fsdef.outputFileExtension;

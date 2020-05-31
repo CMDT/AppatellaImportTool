@@ -3,8 +3,7 @@
 
 const uuidv4 = require('uuid/v4');
 const errorApi = require('../error/error');
-const mkdirp = require('mkdirp');
-const fs = require('fs-extra');
+
 
 const Minizip = require('minizip-asm.js'); //locker/unlocker
 
@@ -12,21 +11,21 @@ const Sql = require('../sql/sql');
 const dbApi = require('../database/database');
 
 const functionsIndex = require('../functions/functionsIndex');
-const definitions = require('../definitions/definitions');
+const filestructure = require('../system/filesystem');
 
-const sevenBin = require ('7zip-bin');
+const fs = require('fs-extra');
+const path = require('path');
 const node7z = require('node-7z');
+const sevenBin = require ('7zip-bin');
 
 
-const fsdef = definitions.fileSystem;
-
+const fsdef = filestructure.definitions;
 
 const zipExtension = fsdef.zipExtension;
 
 const configFileName = fsdef.configFileName;
 const readmeFilename = fsdef.readmeFilename;
 const functionDescriptionFilename = fsdef.functionDescriptionFilename;
-
 
 const snapshotDirectory = fsdef.snapshotDirectory;
 const reservedDirectory = fsdef.reservedDirectory;
@@ -45,35 +44,6 @@ const STATUS = {
   PROGRESSING: "PROGRESSING",
   EXPORTED: "EXPORTED"
 };
-
-exports.initialise = function () {
-
-  function createStructure() {
-    // ... and rebuild an empty structure
-    fs.mkdirSync(snapshotDirectory);
-    fs.mkdirSync(snapshotDirectory + reservedDirectory);
-    fs.mkdirSync(snapshotDirectory + exportedDirectory);
-    fs.mkdirSync(snapshotDirectory + importedDirectory);
-
-  }
-
-
-  // clear down any snapshots - we will lose them.
-  if (fs.existsSync(snapshotDirectory)) {
-    fs.remove(snapshotDirectory,
-      function (err) {
-        if (err) {
-          throw (err);
-        } else {
-          createStructure();
-        }
-      }); // like rm -rf
-  } else {
-    createStructure();
-  }
-
-}
-
 
 
 /**
@@ -240,37 +210,42 @@ exports.deleteExport = async function (fileId, exportRequestId) {
   }
 }
 
-exports.postImport = async function (snapshotZip, snapshotSecret) {
-  /**
-   * 1. get a handle on the file data etc
-   * 2. decrpyt/unlock the zip
-   * 3. unzip the snapshot
-   * 4. 
-   */
+
+
+
+
+
+exports.postImport = async function (source_path, secret, destination_db) {
+
+
+  if(!fs.existsSync(source_path)){
+    throw(errorApi.create404Error(source_path));
+  }
+
+  
   var importId = uuidv4();
-
-  var importName = (snapshotZip.filename.split("."))[0];
-  var importExtension = snapshotZip.filename.replace(importName, '');
-
-  var data = snapshotZip.data;
-  var secret = snapshotSecret;
-
-  var importPath = snapshotDirectory + importedDirectory + "/" + importId;
+  
+  var importPath = snapshotDirectory + importedDirectory + "/" + importId; 
   try {
     fs.mkdirSync(importPath);
   } catch (err) {
-
+    throw(errorApi.create500Error(err.message));
   }
 
-  await unlockAndDecompress(data, secret, importPath)
+  await unlockAndDecompress(source_path, secret, importPath)
     .catch((err) => {
       console.log(err)
-      // throw(errorApi.create400Error("incorrect password"));
+        throw(errorApi.create400Error("Error extracting. Output: \n" + err.stderr));
     });
 
   await dbApi.copyFilesToTables(importPath);
 
+  await fs.remove(importPath);
+
 }
+
+
+
 
 
 function checkSecretValidity(secret) {
@@ -549,50 +524,23 @@ async function compressAndLock(exportRequestId) {
   });
 }
 
-// async function unlockAndDecompress(data, secret, path) {
+function unlockAndDecompress(sourcePath, secret, destinationPath) {
 
+  return new Promise(function(resolve, reject){
+    
+    const pathTo7zip = sevenBin.path7za
+    const stream = node7z.extractFull(sourcePath, destinationPath, {
+      $bin: pathTo7zip,
+      password: secret,
+      recursive: true
+    });
 
-//   const pathTo7zip = sevenBin.path7za
-//   const seven = extractFull('./archive.7z', './output/dir/', {
-//     $bin: pathTo7zip
-//   })
-
-
-
-//   var myImportZip = new Minizip(data);
-
-//   //var options = { encoding: "utf8" }
-//   var options = {};
+    stream.on('data', function(data){
+      console.log(data.file);
+    });
+    stream.on('end', resolve);
+    stream.on('error', reject);
   
-//   if (secret) {
-//     options.password = secret;
-//   }
-//   try {
-//     myImportZip.list(options).forEach(file => {
-//       var zipSubFileData = myImportZip.extract(file.filepath, options);
-//       //console.log("attempting to write file:", file.filepath, "to:", path);
-//       fs.writeFileSync(path + "/" + file.filepath, zipSubFileData)
-//     })
-//   } catch (error) {
-//     throw (error)
-//   }
-// }
-async function unlockAndDecompress(data, secret, path) {
-  var myImportZip = new Minizip(data);
+  });
 
-  //var options = { encoding: "utf8" }
-  var options = {};
-  
-  if (secret) {
-    options.password = secret;
-  }
-  try {
-    myImportZip.list(options).forEach(file => {
-      var zipSubFileData = myImportZip.extract(file.filepath, options);
-      //console.log("attempting to write file:", file.filepath, "to:", path);
-      fs.writeFileSync(path + "/" + file.filepath, zipSubFileData)
-    })
-  } catch (error) {
-    throw (error)
-  }
 }

@@ -366,6 +366,10 @@ async function copyFilesToTables(directory) {
   }
 }
 
+
+
+
+
 // takes a  query, sanitises it and runs within the COPY TO process
 // (which doesn't support parameterised queries.)
 // query must be supported by pg-format,  which is the next best option to parameterise queries.

@@ -1,30 +1,23 @@
 'use strict';
 var httpUtil = require('../util/http/http');
-var exportUtil = require('../util/export/export');
+var importexport = require('../util/service/importexport');
 
+
+
+/**
+ * parameters:
+ * source_path: string: the local path of the 7-zip encoded, AES256 encypted file to be imported
+ * secret: string: the password used when exporting the file
+ * destination_db: the name of the DB to be imported to.
+ */
 exports.postImport = function(args, res, next) {
-  /**
-   * parameters expected in the args:
-  * secret (String)
-  * snapshotZip (file)
-  **/
-  let snapshotZip = {
-    data: null,
-    mimetype: null,
-    filename: null,
-    encoding: null
-  }
-  let snapshotSecret = null;
+
+  var source_path = args.source_path.value;
+  var secret = args.secret.value;
+  var destination_db = args.destination_db.value;
 
   try{
-    snapshotZip.data = args.snapshotZip.value.buffer || null;
-    snapshotZip.mimetype = args.snapshotZip.value.mimetype || null;
-    snapshotZip.filename = args.snapshotZip.value.originalname || null;
-    snapshotZip.encoding = args.snapshotZip.value.encoding || null;
-
-    snapshotSecret = args.secret.value; //needs changing: tit exposes a secret 
-
-    let result = exportUtil.postImport(snapshotZip, snapshotSecret);
+    let result = importexport.postImport(source_path, secret, destination_db);
     httpUtil.endHttpOK(result, res);
   } catch (error) {
     httpUtil.endHttpErr(error, res);
