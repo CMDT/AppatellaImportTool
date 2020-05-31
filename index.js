@@ -179,6 +179,10 @@ var resolveSwaggerDoc = function(swaggerDoc, swaggerUIConfig){
     }
   }
 
+  if(!listenPort){ // was not defined in env variables
+    listenPort = port;
+  }
+
   doc.port = port;
 
   console.log("swagger doc scheme:");
