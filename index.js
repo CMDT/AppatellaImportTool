@@ -9,22 +9,12 @@ var LOCALHOST = 'localhost';
 
 var netutil = require('./util/system/network');
 var filesystem = require('./util/system/filesystem');
-var fs = require('fs');
+var fs = require('fs-extra');
 
 
 
 
-var getAsBoolean = function(key){
-  var result = false;
 
-  var ev = process.env[key] || false;
-
-  if(ev === "true"){
-    result = true;
-  }
-
-  return result;
-}
 
 var getSwaggerUIConfig = function(){
   var result = {};
@@ -44,23 +34,6 @@ var getSwaggerUIConfig = function(){
 
   return result;
 }
-
-
-var getSystemConfig = function(){
-  var result = {};
-
-  // the postgres-scheme URL of the Postgres database
-  if(!process.env.DATABASE_URL) throw new Error("undefined in environment: DATABASE_URL");
-  result.dbUrl = process.env.DATABASE_URL;
-
-  // if the DB is local, dbNeedsSSL must be set to false
-  // if the DB is remote, dbNeedsSSL must be set to true
-  result.dbNeedsSSL = getAsBoolean("DB_NEEDS_SSL");
-
-  return result;
-}
-
-
 
 
 
@@ -247,7 +220,6 @@ var initialise = function () {
   var swaggerDoc = jsyaml.safeLoad(spec);
 
   // fetch categorised system parameters from environment variables.
-  var systemConfig = getSystemConfig();
   var swaggerUIConfig = getSwaggerUIConfig();
 
   var swaggerDocResolve = resolveSwaggerDoc(swaggerDoc, swaggerUIConfig);
@@ -257,17 +229,10 @@ var initialise = function () {
 
   filesystem.initialise();
 
-  database.initialise(
-    systemConfig.dbUrl,
-    systemConfig.dbNeedsSSL);
-
   data.initialise(
-    systemConfig.systemId,
     swaggerDocResolve.summary.scheme,
     swaggerDocResolve.summary.address,
     swaggerDocResolve.summary.port);
-
-
 
 
   // Initialize the Swagger middleware

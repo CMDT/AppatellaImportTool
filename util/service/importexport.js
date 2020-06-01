@@ -217,34 +217,46 @@ exports.deleteExport = async function (fileId, exportRequestId) {
 
 exports.postImport = async function (source_path, secret, destination_db) {
 
-
   if(!fs.existsSync(source_path)){
     throw(errorApi.create404Error(source_path));
   }
 
-  
   var importId = uuidv4();
   
   var importPath = snapshotDirectory + importedDirectory + "/" + importId; 
+
   try {
     fs.mkdirSync(importPath);
   } catch (err) {
-    throw(errorApi.create500Error(err.message));
+    throw(errorApi.create500Error("Error creating temporary import structure: \n" + JSON.stringify(err,null,2)));
   }
 
-  await unlockAndDecompress(source_path, secret, importPath)
-    .catch((err) => {
-      console.log(err)
-        throw(errorApi.create400Error("Error extracting. Output: \n" + err.stderr));
-    });
+  try{
+    await unlockAndDecompress(source_path, secret, importPath)
+  }catch(err){
+    console.log(err)
+    throw(errorApi.create500Error("Error extracting. Output: \n" + err.stderr));
+  };
 
-  await dbApi.copyFilesToTables(importPath);
+  try{
+    await dbApi.initialise(destination_db);
+  }catch(err){
+    throw(errorApi.create500Error("Error creating database: \n" + err.message));
+  }
 
-  await fs.remove(importPath);
+  try{
+    await dbApi.copyFilesToTables(importPath);
+  }catch(err){
+    throw(errorApi.create500Error("Error populating database: \n" + err.message));
+  }
+
+  try{
+    await fs.remove(importPath);
+  }catch(err){
+    throw(errorApi.create500Error("Error clearing old files: \n" + err.message));
+  }
 
 }
-
-
 
 
 
@@ -253,7 +265,7 @@ function checkSecretValidity(secret) {
   if ((secret.length > 3) && (!secret.includes(" "))) {
     result = secret;
   } else {
-    throw ("secret must be of minimum length 3, with no spaces.");
+    throw (new Error("secret must be of minimum length 3, with no spaces."));
   }
   return result;
 }

@@ -16,10 +16,12 @@ exports.postImport = function(args, res, next) {
   var secret = args.secret.value;
   var destination_db = args.destination_db.value;
 
-  try{
-    let result = importexport.postImport(source_path, secret, destination_db);
-    httpUtil.endHttpOK(result, res);
-  } catch (error) {
-    httpUtil.endHttpErr(error, res);
-  }
+  
+  importexport.postImport(source_path, secret, destination_db)
+    .then((result) => {
+      httpUtil.endHttpOK(result, res);
+    })
+    .catch((error) =>{
+      httpUtil.endHttpErr(error, res);
+    });
 }

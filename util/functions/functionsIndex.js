@@ -255,7 +255,7 @@ function seekFunction(candidateId) { // this function throws if id is in any way
     var result = functionDefLookup[candidateId];
 
     if (!result) {
-        throw ("no function: " + candidateId);
+        throw (new Error("no function: " + candidateId));
     }
     return result;
 }
@@ -270,11 +270,11 @@ async function runFunction( // throws
     var parameters = analysisDef.parameters; //optional 
 
     if (!functionId) {
-        throw ("no analysis function was defined.");
+        throw (new Error("no analysis function was defined."));
     }
 
     if (!functionDefLookup[functionId]) {
-        throw ("no analysis function was found for id: " + functionId);
+        throw (new Error("no analysis function was found for id: " + functionId));
     }
 
     var analysisFunction = functions[functionId];

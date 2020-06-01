@@ -1,6 +1,7 @@
 'use strict';
 
 var { Pool } = require('pg');
+var pgtools = require('pgtools');
 const copyTo = require('pg-copy-streams').to;
 const copyFrom = require('pg-copy-streams').from;
 const format = require('pg-format');
@@ -9,38 +10,52 @@ var debug = require('debug');
 var log = debug('app:log');
 var error = require('../error/error');
 
-var thePool = null;
-var theConfig = null;
+var THE_POOL = null;
+var THE_CONFIG = null;
 
 
+/**
+ * initialises the database and connection pool.
+ * we assume that the dabase is on localhost
+ * @param {*} url 
+ */
+async function initialise(name) {
+  // see : https://node-postgres.com/features/connecting
 
-
-
-
-
-var initialise = function (url, needsSSL) {
-  if (needsSSL == true) {
-    url += "?sslmode=require"
+  // remove all connections to the DB
+  if (THE_POOL) {
+    await THE_POOL.end();
   }
 
-  if (thePool) {
-    thePool.end();
+  THE_CONFIG = {
+    host: 'localhost',
+    database: name,
+    ssl: false
   };
+  
+  try{
+    await pgtools.dropdb(THE_CONFIG, THE_CONFIG.database);
+  }catch(err){
+    throw (new Error("Error removing the old database: \n" + err.message));
+  }
 
-  theConfig = null;
+  try{
+    await pgtools.createdb(THE_CONFIG, THE_CONFIG.database);
+  }catch(err){
+    throw (new Error("Error creating the new database: \n" + err.message));
+  }
 
-  theConfig = {
-    connectionString: url,
-    ssl: needsSSL
-  };
-
-  log("DB: " + url);
-  thePool = new Pool(theConfig);
+  THE_POOL = new Pool(THE_CONFIG);
+ 
 };
 
 
 
-var createColumnSpec = function(header, type){
+
+
+
+
+var createColumnSpec = function (header, type) {
   return {
     header: header,
     type: type,
@@ -49,11 +64,11 @@ var createColumnSpec = function(header, type){
 
 }
 
-var createTextColumnSpecs = function(columnNames){
+var createTextColumnSpecs = function (columnNames) {
   var result = [];
-  if(columnNames){
-    for( var index=0; index < columnNames.length; index++){
-      var  columnSpec = createColumnSpec(columnNames[index], 'TEXT');
+  if (columnNames) {
+    for (var index = 0; index < columnNames.length; index++) {
+      var columnSpec = createColumnSpec(columnNames[index], 'TEXT');
       result.push(columnSpec);
     }
   }
@@ -61,14 +76,14 @@ var createTextColumnSpecs = function(columnNames){
 }
 
 
-var createTableSpec = function(name, columnSpecs){
+var createTableSpec = function (name, columnSpecs) {
   var headers = [];
   var specs = [];
-  if(!columnSpecs){
+  if (!columnSpecs) {
     columnSpecs = [];
   }
 
-  for (var i = 0; i< columnSpecs.length; i++){
+  for (var i = 0; i < columnSpecs.length; i++) {
     headers.push(columnSpecs[i].header);
     specs.push(columnSpecs[i].spec);
   }
@@ -83,11 +98,11 @@ var createTableSpec = function(name, columnSpecs){
 
 var query = async function (text, params) {
   var result = null;
-  const client = await thePool.connect();
+  const client = await THE_POOL.connect();
   try {
     result = client.query(text, params);
   } catch (e) {
-    throw (error.create500Error("SQL error"));
+    throw (new Error("SQL error : " + e.message));
   } finally {
     client.release();
   }
@@ -99,7 +114,7 @@ var query = async function (text, params) {
 var multiQuery = async function (queries) {
 
   var results = [];
-  const client = await thePool.connect();
+  const client = await THE_POOL.connect();
   try {
     await client.query('BEGIN');
     for (var index = 0; index < queries.length; index++) {
@@ -112,7 +127,7 @@ var multiQuery = async function (queries) {
   } catch (e) {
     await client.query('ROLLBACK');
 
-    throw (error.create500Error("SQL error"));
+    throw (new Error("SQL Error: " + e.message));
   } finally {
     client.release();
   }
@@ -185,7 +200,7 @@ var multiTabularQuery = async (
 ) => {
 
   var results = null;
-  const client = await thePool.connect();
+  const client = await THE_POOL.connect();
   try {
     await client.query('BEGIN');
     for (var index = 0; index < tabularQueries.length; index++) {
@@ -209,7 +224,7 @@ var multiTabularQuery = async (
   } catch (e) {
     await client.query('ROLLBACK');
 
-    throw (error.create500Error("SQL error"));
+    throw (new Error("SQL error: " + e.message));
   } finally {
     client.release();
   }
@@ -233,7 +248,7 @@ function createRowFromArray(arrayNames, colDelimiter) {
 }
 
 
-function createRowFromColumns (arrayColumns, rowIndex, colDelimiter) {
+function createRowFromColumns(arrayColumns, rowIndex, colDelimiter) {
   var result = "";
   for (var index = 0; index < arrayColumns.length; index++) {
     if (rowIndex < arrayColumns[index].length) {
@@ -242,13 +257,13 @@ function createRowFromColumns (arrayColumns, rowIndex, colDelimiter) {
         result += colDelimiter;
       }
     } else {
-      throw ("there was a problem creating a row: the row index exceeded the length of the columns.");
+      throw (new Error("there was a problem creating a row: the row index exceeded the length of the columns."));
     }
   }
   return result;
 }
 
-function createDelimitedTableContent (arrayHeaders, arrayColumns, colDelimiter, lineDelimiter) {
+function createDelimitedTableContent(arrayHeaders, arrayColumns, colDelimiter, lineDelimiter) {
   var result = "";
 
   if (arrayColumns && arrayColumns.length > 0) {
@@ -258,7 +273,7 @@ function createDelimitedTableContent (arrayHeaders, arrayColumns, colDelimiter, 
     // headers
     if (arrayHeaders && arrayHeaders.length > 0) {
       if (arrayHeaders.length != arrayColumns.length) {
-        throw ("there was a problem creating the courses data file: the header columns were a different size to the data columns.");
+        throw (new Error("there was a problem creating the courses data file: the header columns were a different size to the data columns."));
       }
       headers = createRowFromArray(arrayHeaders, 0, colDelimiter);
       headers += lineDelimiter;
@@ -268,7 +283,7 @@ function createDelimitedTableContent (arrayHeaders, arrayColumns, colDelimiter, 
     var colLength = arrayColumns[0].length;
     for (var index = 0; index < arrayColumns.length; index++) {
       if (arrayColumns[index].length != colLength) {
-        throw ("there was a problem creating the courses data file: the data columns were of different lengths. It's not possible to create rows.");
+        throw (new Error("there was a problem creating the courses data file: the data columns were of different lengths. It's not possible to create rows."));
       }
     }
 
@@ -296,7 +311,7 @@ async function commitTransaction(client) {
 }
 
 
-async function dropTempTable(client, tableName){
+async function dropTempTable(client, tableName) {
   var query = "drop table " + tableName + ";";
 
   await client.query(query);
@@ -341,7 +356,7 @@ async function copyFilesToTables(directory) {
     var tableName = file.split(".")[0];
     if (file.split(".")[1] != "sql") {
       await new Promise(function (resolve, reject) { //push file to table
-        thePool.connect().then(client => {
+        THE_POOL.connect().then(client => {
 
           let done = function () {
             console.log("FILE TO DB: ", file, " Written.");
@@ -381,29 +396,29 @@ async function runQueryToFile(client, preparedQuery, writeStream) {
     var stream = client.query(copyTo('COPY (' + combinedQuery + ') TO STDOUT CSV HEADER'));
     stream.pipe(writeStream);
     stream.on('error', reject);
-    writeStream.on('finish', function(){
+    writeStream.on('finish', function () {
       console.log("finished stream");
       resolve();
     });
-    
+
   });
 }
 
-async function singleQueryToFile( 
+async function singleQueryToFile(
   query,
-  filePath){
-    let fileStream = fs.createWriteStream(filePath);
-    var client = await thePool.connect();
+  filePath) {
+  let fileStream = fs.createWriteStream(filePath);
+  var client = await THE_POOL.connect();
 
-    try{
-      await runQueryToFile(client, query, fileStream);
-      console.log("runQueryToFile - completed.");
-    }catch(e){
-      console.log("error: query: " + e.message);
-    }finally{
-      client.release();
-      fileStream.close();
-    }
+  try {
+    await runQueryToFile(client, query, fileStream);
+    console.log("runQueryToFile - completed.");
+  } catch (e) {
+    console.log("error: query: " + e.message);
+  } finally {
+    client.release();
+    fileStream.close();
+  }
 }
 
 
@@ -421,20 +436,20 @@ async function tableQueriesToFiles(
     var tableQuery = tableQueries[index];
     var name = tableQuery.name;
     var query = tableQuery.query;
-    console.log("query: " +  name);
+    console.log("query: " + name);
     let fileStream = fs.createWriteStream(dirPath + "/" + name + extension);
-    
-    if(fnProgress){
+
+    if (fnProgress) {
       await fnProgress(index, tableQueries.length, name);
     }
-    try{
+    try {
       console.log("calling: runQueryToFile");
       await runQueryToFile(client, query, fileStream);
       console.log("returned: runQueryToFile");
-    }catch(e){
+    } catch (e) {
       console.log("error: query: " + e.message);
-      throw(e);
-    }finally{
+      throw (e);
+    } finally {
       fileStream.close();
       console.log("closed stream");
     }
@@ -461,7 +476,7 @@ async function createTempTable(client, tableSpec, tableDataFilepath) {
     courseSelectionFileStream.close();
   }
   else {
-    throw("no course ids were found for export.");
+    throw (new Error("no course ids were found for export."));
   }
 }
 
@@ -469,10 +484,10 @@ async function createTempTable(client, tableSpec, tableDataFilepath) {
 // tempTableSpec, tempTableDataPath are optional
 async function exportQueriesToFiles(preparedQueries, tempTableSpec, tempTableDataPath, outputPath, outputFileExtension, fnProgress) {
 
-  var client = await thePool.connect();
+  var client = await THE_POOL.connect();
   try {
     await beginTransaction(client); // need to create a tempoarary table which gets dropped automatically at the end of the transaction
-    if(tempTableSpec){
+    if (tempTableSpec) {
       await createTempTable(client, tempTableSpec, tempTableDataPath);
     }
     await tableQueriesToFiles(
@@ -488,7 +503,7 @@ async function exportQueriesToFiles(preparedQueries, tempTableSpec, tempTableDat
     await commitTransaction(client);
 
   } finally {
-      client.release();
+    client.release();
   }
 }
 
@@ -496,7 +511,7 @@ async function exportQueriesToFiles(preparedQueries, tempTableSpec, tempTableDat
 module.exports = {
   initialise: initialise,
   createTableSpec: createTableSpec,
-  createTextColumnSpecs : createTextColumnSpecs,
+  createTextColumnSpecs: createTextColumnSpecs,
   createColumnSpec: createColumnSpec,
   query: query,
   multiQuery: multiQuery,

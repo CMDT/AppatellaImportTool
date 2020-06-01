@@ -60,6 +60,8 @@ module.exports = {
 
 
   initialise: service.initialise,
+  drop: service.drop,
+  create: service.create,
   createTableSpec: service.createTableSpec,
   createTextColumnSpecs : service.createTextColumnSpecs,
   createColumnSpec: service.createColumnSpec,
