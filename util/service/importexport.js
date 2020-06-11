@@ -3,21 +3,13 @@
 
 const uuidv4 = require('uuid/v4');
 const errorApi = require('../error/error');
-
-
 const Minizip = require('minizip-asm.js'); //locker/unlocker
-
 const Sql = require('../sql/sql');
 const dbApi = require('../database/database');
-
-const functionsIndex = require('../functions/functionsIndex');
 const filestructure = require('../system/filesystem');
-
 const fs = require('fs-extra');
-const path = require('path');
 const node7z = require('node-7z');
 const sevenBin = require ('7zip-bin');
-
 
 const fsdef = filestructure.definitions;
 
@@ -25,6 +17,7 @@ const zipExtension = fsdef.zipExtension;
 
 const configFileName = fsdef.configFileName;
 const readmeFilename = fsdef.readmeFilename;
+const schemaFilename = fsdef.schemaFilename;
 const functionDescriptionFilename = fsdef.functionDescriptionFilename;
 
 const snapshotDirectory = fsdef.snapshotDirectory;
@@ -224,7 +217,7 @@ exports.postImport = async function (source_path, secret, destination_db) {
   var importId = uuidv4();
   
   var importPath = snapshotDirectory + importedDirectory + "/" + importId; 
-
+  var schemaPath = importPath + "/" + schemaFilename;  
   try {
     fs.mkdirSync(importPath);
   } catch (err) {
@@ -239,7 +232,7 @@ exports.postImport = async function (source_path, secret, destination_db) {
   };
 
   try{
-    await dbApi.initialise(destination_db);
+    await dbApi.initialise(destination_db, schemaPath);
   }catch(err){
     throw(errorApi.create500Error("Error creating database: \n" + err.message));
   }
@@ -356,6 +349,7 @@ async function exportSnapshot(config) {
   var outputFilePath = snapshotDirectory + reservedDirectory + "/" + exportRequestId + "/export";
   var exportRequestDir = snapshotDirectory + reservedDirectory + "/" + exportRequestId;
   var exportParametersDir = exportRequestDir + workingDirectory;
+  
 
   await updateSnapshotConfig(exportRequestId, undefined, undefined, "creating export directory.");
 
@@ -374,7 +368,7 @@ async function exportSnapshot(config) {
   fs.mkdirSync(outputFilePath);
 
   await updateSnapshotConfig(exportRequestId, undefined, undefined, "Copying DB schema");
-  await copyFile("./schema/schema.sql", outputFilePath + "/schema.sql");
+  await copyFile("./schema/schema.sql", outputFilePath + "/" + schemaFilename);
 
   await updateSnapshotConfig(exportRequestId, undefined, undefined, "Copying readme file");
   await copyFile("./output_text/readme.md", outputFilePath + "/" + readmeFilename);

@@ -2,8 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 10.4
--- Dumped by pg_dump version 10.4
+-- Dumped from database version 12.1
+-- Dumped by pg_dump version 12.1
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -12,22 +12,12 @@ SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
+SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
-			
---		
--- Name: plpgsql; Type: EXTENSION; Schema: -; Owner: 		
---		
-CREATE EXTENSION IF NOT EXISTS plpgsql WITH SCHEMA pg_catalog;		
---		
--- Name: EXTENSION plpgsql; Type: COMMENT; Schema: -; Owner: 		
---		
-COMMENT ON EXTENSION plpgsql IS 'PL/pgSQL procedural language';
-
-
 --
--- Name: uuid-ossp; Type: EXTENSION; Schema: -; Owner: 
+-- Name: uuid-ossp; Type: EXTENSION; Schema: -; Owner: -
 --
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA public;
@@ -40,12 +30,170 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA public;
 COMMENT ON EXTENSION "uuid-ossp" IS 'generate universally unique identifiers (UUIDs)';
 
 
-SET default_tablespace = '';
+--
+-- Name: get_course_answers(); Type: FUNCTION; Schema: public; Owner: digitallabsadmin
+--
 
-SET default_with_oids = false;
+CREATE FUNCTION public.get_course_answers() RETURNS TABLE(course text, question_text text, day_count bigint, date text, answer_choices text, selected_choice integer, answer_text text)
+    LANGUAGE sql STABLE
+    AS $$
+with 
+selected_courses as (
+	select t1.id from courses t1
+),
+get_course_answers as (
+select 
+t1.id, 
+t1.course,
+t1.day_count, 
+TO_CHAR(t1.date,'YYYY-MM-DD HH24:MI:SS.US') "date", 
+t1.question, 
+t1.answer_text, 
+substring(t1.json_array_int_choice_indices,'[0-9]+') selected_choice 
+from course_answers t1 
+inner join selected_courses t2 on t1.course = t2.id
+),
+get_answers_w_questions as (
+select 
+t1.course, 
+t2.text question_text, 
+t1.day_count,
+t1.date,
+t2.json_array_string_choices answer_choices,
+t1.answer_text,
+(t1.selected_choice::integer +1) as selected_choice
+from get_course_answers t1 
+join questions t2 
+on (t1.question = t2.id)
+)
+select course, question_text,  day_count, date, answer_choices, selected_choice, answer_text from get_answers_w_questions order by course, question_text, day_count ASC, date ASC;
+$$;
+
+
+ALTER FUNCTION public.get_course_answers() OWNER TO digitallabsadmin;
 
 --
--- Name: base64_resources; Type: TABLE; Schema: public; Owner: coops
+-- Name: get_session_answers(); Type: FUNCTION; Schema: public; Owner: digitallabsadmin
+--
+
+CREATE FUNCTION public.get_session_answers() RETURNS TABLE(course text, plan_name text, session_name text, question_text text, day_count integer, date text, answer_choices text, selected_choice integer, answer_text text)
+    LANGUAGE sql STABLE
+    AS $$
+with
+selected_courses as (
+	select t1.id from courses t1
+),
+get_session_answers as (
+select 
+t1.id, 
+t1.course,
+t1.day_count, 
+TO_CHAR(t1.date,'YYYY-MM-DD HH24:MI:SS.US') "date", 
+t1.question,
+t1.session,
+t1.plan, 
+t1.answer_text, 
+substring(t1.json_array_int_choice_indices,'[0-9]+') selected_choice 
+from session_answers t1 
+inner join selected_courses t2 on t1.course = t2.id
+),
+get_answers_w_detail as (
+select 
+t1.course, 
+t4.name plan_name,
+t3.name session_name,
+t1.day_count,
+t1.date,
+t2.text question_text,
+t2.json_array_string_choices answer_choices,
+t1.answer_text,
+(t1.selected_choice::integer + 1) as selected_choice
+from get_session_answers t1 
+join questions t2 
+on (t1.question = t2.id)
+join sessions t3
+on (t1.session = t3.id)
+join plans t4 
+on (t1.plan = t4.id)
+)
+select course, plan_name, session_name, question_text,  day_count, date, answer_choices, selected_choice, answer_text from get_answers_w_detail order by course, plan_name, session_name, question_text, day_count ASC, date ASC;
+$$;
+
+
+ALTER FUNCTION public.get_session_answers() OWNER TO digitallabsadmin;
+
+--
+-- Name: get_session_completion(); Type: FUNCTION; Schema: public; Owner: digitallabsadmin
+--
+
+CREATE FUNCTION public.get_session_completion() RETURNS TABLE(course text, plan_name text, session_name text, start_date text, date text, session_duration_s double precision, last_exercise_name text, day_count integer, progress_percent integer)
+    LANGUAGE sql STABLE
+    AS $$
+with
+selected_courses as (
+	select t1.id from courses t1
+),
+get_session_completion as (
+select 
+t1.id, 
+t1.course,
+t1.day_count, 
+TO_CHAR(t1.start_timestamp,'YYYY-MM-DD HH24:MI:SS.US') "start_date", 
+TO_CHAR(t1.date,'YYYY-MM-DD HH24:MI:SS.US') "date", 
+EXTRACT(EPOCH FROM (t1.date - t1.start_timestamp)) "session_duration_s",
+t1.session,
+t1.plan,
+t1.last_attempted_exercise, 
+t1.progress_percent
+
+from session_completion t1 
+inner join selected_courses t2 on t1.course = t2.id
+),
+get_answers_w_detail as (
+select 
+t1.course, 
+t4.name plan_name, -- concat('...' ,right ( regexp_replace (regexp_replace (t4.name,E'[^a-zA-Z0-9]',' ','g'), '( ){2,}',' ','g'), 20)) plan_name,
+t3.name session_name, -- concat('...' ,right ( regexp_replace (regexp_replace (t3.name,E'[^a-zA-Z0-9]',' ','g'), '( ){2,}',' ','g'), 20)) session_name,
+t2.name last_exercise_name, -- concat('...' ,right ( regexp_replace (regexp_replace (t3.name,E'[^a-zA-Z0-9]',' ','g'), '( ){2,}',' ','g'), 20)) last_exercise_name,
+t1.day_count,
+t1.start_date,
+t1.date,
+t1.session_duration_s,
+t1.progress_percent
+from get_session_completion t1 
+join exercises t2 
+on (t1.last_attempted_exercise = t2.id)
+join sessions t3
+on (t1.session = t3.id)
+join plans t4 
+on (t1.plan = t4.id)
+)
+select course, plan_name, session_name, start_date, date, session_duration_s, last_exercise_name,  day_count, progress_percent from get_answers_w_detail order by course, plan_name, session_name, last_exercise_name, day_count ASC, date ASC;
+$$;
+
+
+ALTER FUNCTION public.get_session_completion() OWNER TO digitallabsadmin;
+
+--
+-- Name: access_types_id_seq; Type: SEQUENCE; Schema: public; Owner: digitallabsadmin
+--
+
+CREATE SEQUENCE public.access_types_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.access_types_id_seq OWNER TO digitallabsadmin;
+
+SET default_tablespace = '';
+
+SET default_table_access_method = heap;
+
+--
+-- Name: base64_resources; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.base64_resources (
@@ -55,10 +203,10 @@ CREATE TABLE public.base64_resources (
 );
 
 
-ALTER TABLE public.base64_resources OWNER TO coops;
+ALTER TABLE public.base64_resources OWNER TO digitallabsadmin;
 
 --
--- Name: base64_resources_id_seq; Type: SEQUENCE; Schema: public; Owner: coops
+-- Name: base64_resources_id_seq; Type: SEQUENCE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE SEQUENCE public.base64_resources_id_seq
@@ -69,17 +217,52 @@ CREATE SEQUENCE public.base64_resources_id_seq
     CACHE 1;
 
 
-ALTER TABLE public.base64_resources_id_seq OWNER TO coops;
+ALTER TABLE public.base64_resources_id_seq OWNER TO digitallabsadmin;
 
 --
--- Name: base64_resources_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: coops
+-- Name: base64_resources_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER SEQUENCE public.base64_resources_id_seq OWNED BY public.base64_resources.id;
 
 
 --
--- Name: course_answers; Type: TABLE; Schema: public; Owner: coops
+-- Name: capability_types; Type: TABLE; Schema: public; Owner: digitallabsadmin
+--
+
+CREATE TABLE public.capability_types (
+    id integer NOT NULL,
+    name text NOT NULL,
+    description text
+);
+
+
+ALTER TABLE public.capability_types OWNER TO digitallabsadmin;
+
+--
+-- Name: capability_types_id_seq; Type: SEQUENCE; Schema: public; Owner: digitallabsadmin
+--
+
+CREATE SEQUENCE public.capability_types_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.capability_types_id_seq OWNER TO digitallabsadmin;
+
+--
+-- Name: capability_types_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: digitallabsadmin
+--
+
+ALTER SEQUENCE public.capability_types_id_seq OWNED BY public.capability_types.id;
+
+
+--
+-- Name: course_answers; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.course_answers (
@@ -97,10 +280,10 @@ CREATE TABLE public.course_answers (
 );
 
 
-ALTER TABLE public.course_answers OWNER TO coops;
+ALTER TABLE public.course_answers OWNER TO digitallabsadmin;
 
 --
--- Name: course_state_types; Type: TABLE; Schema: public; Owner: coops
+-- Name: course_state_types; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.course_state_types (
@@ -109,10 +292,10 @@ CREATE TABLE public.course_state_types (
 );
 
 
-ALTER TABLE public.course_state_types OWNER TO coops;
+ALTER TABLE public.course_state_types OWNER TO digitallabsadmin;
 
 --
--- Name: course_survey_schedule; Type: TABLE; Schema: public; Owner: coops
+-- Name: course_survey_schedule; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.course_survey_schedule (
@@ -124,10 +307,10 @@ CREATE TABLE public.course_survey_schedule (
 );
 
 
-ALTER TABLE public.course_survey_schedule OWNER TO coops;
+ALTER TABLE public.course_survey_schedule OWNER TO digitallabsadmin;
 
 --
--- Name: course_to_plan_mapping; Type: TABLE; Schema: public; Owner: coops
+-- Name: course_to_plan_mapping; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.course_to_plan_mapping (
@@ -139,10 +322,10 @@ CREATE TABLE public.course_to_plan_mapping (
 );
 
 
-ALTER TABLE public.course_to_plan_mapping OWNER TO coops;
+ALTER TABLE public.course_to_plan_mapping OWNER TO digitallabsadmin;
 
 --
--- Name: course_to_survey_mapping; Type: TABLE; Schema: public; Owner: coops
+-- Name: course_to_survey_mapping; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.course_to_survey_mapping (
@@ -153,10 +336,10 @@ CREATE TABLE public.course_to_survey_mapping (
 );
 
 
-ALTER TABLE public.course_to_survey_mapping OWNER TO coops;
+ALTER TABLE public.course_to_survey_mapping OWNER TO digitallabsadmin;
 
 --
--- Name: course_to_survey_types; Type: TABLE; Schema: public; Owner: coops
+-- Name: course_to_survey_types; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.course_to_survey_types (
@@ -165,10 +348,10 @@ CREATE TABLE public.course_to_survey_types (
 );
 
 
-ALTER TABLE public.course_to_survey_types OWNER TO coops;
+ALTER TABLE public.course_to_survey_types OWNER TO digitallabsadmin;
 
 --
--- Name: courses; Type: TABLE; Schema: public; Owner: coops
+-- Name: courses; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.courses (
@@ -180,10 +363,10 @@ CREATE TABLE public.courses (
 );
 
 
-ALTER TABLE public.courses OWNER TO coops;
+ALTER TABLE public.courses OWNER TO digitallabsadmin;
 
 --
--- Name: days_of_the_week; Type: TABLE; Schema: public; Owner: coops
+-- Name: days_of_the_week; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.days_of_the_week (
@@ -192,37 +375,10 @@ CREATE TABLE public.days_of_the_week (
 );
 
 
-ALTER TABLE public.days_of_the_week OWNER TO coops;
+ALTER TABLE public.days_of_the_week OWNER TO digitallabsadmin;
 
 --
--- Name: deployment_state_types; Type: TABLE; Schema: public; Owner: coops
---
-
-CREATE TABLE public.deployment_state_types (
-    id integer DEFAULT 0 NOT NULL,
-    name text NOT NULL
-);
-
-
-ALTER TABLE public.deployment_state_types OWNER TO coops;
-
---
--- Name: deployments; Type: TABLE; Schema: public; Owner: coops
---
-
-CREATE TABLE public.deployments (
-    id text DEFAULT public.uuid_generate_v4() NOT NULL,
-    state integer DEFAULT 0,
-    course_id text,
-    created timestamp without time zone DEFAULT timezone('utc'::text, now()),
-    token text
-);
-
-
-ALTER TABLE public.deployments OWNER TO coops;
-
---
--- Name: exercise_to_media_mapping; Type: TABLE; Schema: public; Owner: coops
+-- Name: exercise_to_media_mapping; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.exercise_to_media_mapping (
@@ -233,10 +389,10 @@ CREATE TABLE public.exercise_to_media_mapping (
 );
 
 
-ALTER TABLE public.exercise_to_media_mapping OWNER TO coops;
+ALTER TABLE public.exercise_to_media_mapping OWNER TO digitallabsadmin;
 
 --
--- Name: exercises; Type: TABLE; Schema: public; Owner: coops
+-- Name: exercises; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.exercises (
@@ -250,10 +406,38 @@ CREATE TABLE public.exercises (
 );
 
 
-ALTER TABLE public.exercises OWNER TO coops;
+ALTER TABLE public.exercises OWNER TO digitallabsadmin;
 
 --
--- Name: flow_action_types; Type: TABLE; Schema: public; Owner: coops
+-- Name: export_to_course_mapping; Type: TABLE; Schema: public; Owner: digitallabsadmin
+--
+
+CREATE TABLE public.export_to_course_mapping (
+    id text DEFAULT public.uuid_generate_v4() NOT NULL,
+    export text NOT NULL,
+    course text NOT NULL
+);
+
+
+ALTER TABLE public.export_to_course_mapping OWNER TO digitallabsadmin;
+
+--
+-- Name: exports; Type: TABLE; Schema: public; Owner: digitallabsadmin
+--
+
+CREATE TABLE public.exports (
+    id text DEFAULT public.uuid_generate_v4() NOT NULL,
+    "user" text,
+    created timestamp without time zone DEFAULT timezone('utc'::text, now()),
+    filename text NOT NULL,
+    downloaded timestamp without time zone
+);
+
+
+ALTER TABLE public.exports OWNER TO digitallabsadmin;
+
+--
+-- Name: flow_action_types; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.flow_action_types (
@@ -262,10 +446,10 @@ CREATE TABLE public.flow_action_types (
 );
 
 
-ALTER TABLE public.flow_action_types OWNER TO coops;
+ALTER TABLE public.flow_action_types OWNER TO digitallabsadmin;
 
 --
--- Name: media; Type: TABLE; Schema: public; Owner: coops
+-- Name: media; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.media (
@@ -276,10 +460,10 @@ CREATE TABLE public.media (
 );
 
 
-ALTER TABLE public.media OWNER TO coops;
+ALTER TABLE public.media OWNER TO digitallabsadmin;
 
 --
--- Name: media_context_types; Type: TABLE; Schema: public; Owner: coops
+-- Name: media_context_types; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.media_context_types (
@@ -288,10 +472,10 @@ CREATE TABLE public.media_context_types (
 );
 
 
-ALTER TABLE public.media_context_types OWNER TO coops;
+ALTER TABLE public.media_context_types OWNER TO digitallabsadmin;
 
 --
--- Name: message_types; Type: TABLE; Schema: public; Owner: coops
+-- Name: message_types; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.message_types (
@@ -301,10 +485,10 @@ CREATE TABLE public.message_types (
 );
 
 
-ALTER TABLE public.message_types OWNER TO coops;
+ALTER TABLE public.message_types OWNER TO digitallabsadmin;
 
 --
--- Name: messages; Type: TABLE; Schema: public; Owner: coops
+-- Name: messages; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.messages (
@@ -314,60 +498,10 @@ CREATE TABLE public.messages (
 );
 
 
-ALTER TABLE public.messages OWNER TO coops;
+ALTER TABLE public.messages OWNER TO digitallabsadmin;
 
 --
--- Name: organisation_scopes; Type: TABLE; Schema: public; Owner: coops
---
-
-CREATE TABLE public.organisation_scopes (
-    id integer DEFAULT 0 NOT NULL,
-    name text
-);
-
-
-ALTER TABLE public.organisation_scopes OWNER TO coops;
-
---
--- Name: organisation_to_course_mapping; Type: TABLE; Schema: public; Owner: coops
---
-
-CREATE TABLE public.organisation_to_course_mapping (
-    id text DEFAULT public.uuid_generate_v4() NOT NULL,
-    organisation text,
-    course text
-);
-
-
-ALTER TABLE public.organisation_to_course_mapping OWNER TO coops;
-
---
--- Name: organisation_to_plan_mapping; Type: TABLE; Schema: public; Owner: coops
---
-
-CREATE TABLE public.organisation_to_plan_mapping (
-    id text DEFAULT public.uuid_generate_v4() NOT NULL,
-    organisation text,
-    plan text
-);
-
-
-ALTER TABLE public.organisation_to_plan_mapping OWNER TO coops;
-
---
--- Name: organisations; Type: TABLE; Schema: public; Owner: coops
---
-
-CREATE TABLE public.organisations (
-    id text DEFAULT public.uuid_generate_v4() NOT NULL,
-    name text
-);
-
-
-ALTER TABLE public.organisations OWNER TO coops;
-
---
--- Name: period_type; Type: TABLE; Schema: public; Owner: coops
+-- Name: period_type; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.period_type (
@@ -376,10 +510,25 @@ CREATE TABLE public.period_type (
 );
 
 
-ALTER TABLE public.period_type OWNER TO coops;
+ALTER TABLE public.period_type OWNER TO digitallabsadmin;
 
 --
--- Name: plan_to_session_mapping; Type: TABLE; Schema: public; Owner: coops
+-- Name: plan_survey_schedule; Type: TABLE; Schema: public; Owner: digitallabsadmin
+--
+
+CREATE TABLE public.plan_survey_schedule (
+    id text DEFAULT public.uuid_generate_v4() NOT NULL,
+    every integer,
+    period integer,
+    mapping text,
+    from_date date DEFAULT ('now'::text)::date
+);
+
+
+ALTER TABLE public.plan_survey_schedule OWNER TO digitallabsadmin;
+
+--
+-- Name: plan_to_session_mapping; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.plan_to_session_mapping (
@@ -391,10 +540,10 @@ CREATE TABLE public.plan_to_session_mapping (
 );
 
 
-ALTER TABLE public.plan_to_session_mapping OWNER TO coops;
+ALTER TABLE public.plan_to_session_mapping OWNER TO digitallabsadmin;
 
 --
--- Name: plan_to_setting_definition_mapping; Type: TABLE; Schema: public; Owner: coops
+-- Name: plan_to_setting_definition_mapping; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.plan_to_setting_definition_mapping (
@@ -404,10 +553,24 @@ CREATE TABLE public.plan_to_setting_definition_mapping (
 );
 
 
-ALTER TABLE public.plan_to_setting_definition_mapping OWNER TO coops;
+ALTER TABLE public.plan_to_setting_definition_mapping OWNER TO digitallabsadmin;
 
 --
--- Name: plans; Type: TABLE; Schema: public; Owner: coops
+-- Name: plan_to_survey_mapping; Type: TABLE; Schema: public; Owner: digitallabsadmin
+--
+
+CREATE TABLE public.plan_to_survey_mapping (
+    id text DEFAULT public.uuid_generate_v4() NOT NULL,
+    plan text,
+    survey text,
+    type integer
+);
+
+
+ALTER TABLE public.plan_to_survey_mapping OWNER TO digitallabsadmin;
+
+--
+-- Name: plans; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.plans (
@@ -423,35 +586,10 @@ CREATE TABLE public.plans (
 );
 
 
-ALTER TABLE public.plans OWNER TO coops;
+ALTER TABLE public.plans OWNER TO digitallabsadmin;
 
 --
--- Name: publish_states; Type: TABLE; Schema: public; Owner: coops
---
-
-CREATE TABLE public.publish_states (
-    id integer NOT NULL,
-    name text
-);
-
-
-ALTER TABLE public.publish_states OWNER TO coops;
-
---
--- Name: published; Type: TABLE; Schema: public; Owner: coops
---
-
-CREATE TABLE public.published (
-    id text DEFAULT public.uuid_generate_v4() NOT NULL,
-    id_of_published_entity text NOT NULL,
-    state integer
-);
-
-
-ALTER TABLE public.published OWNER TO coops;
-
---
--- Name: question_types; Type: TABLE; Schema: public; Owner: coops
+-- Name: question_types; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.question_types (
@@ -460,10 +598,10 @@ CREATE TABLE public.question_types (
 );
 
 
-ALTER TABLE public.question_types OWNER TO coops;
+ALTER TABLE public.question_types OWNER TO digitallabsadmin;
 
 --
--- Name: questions; Type: TABLE; Schema: public; Owner: coops
+-- Name: questions; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.questions (
@@ -474,10 +612,10 @@ CREATE TABLE public.questions (
 );
 
 
-ALTER TABLE public.questions OWNER TO coops;
+ALTER TABLE public.questions OWNER TO digitallabsadmin;
 
 --
--- Name: resource_type; Type: TABLE; Schema: public; Owner: coops
+-- Name: resource_type; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.resource_type (
@@ -487,10 +625,10 @@ CREATE TABLE public.resource_type (
 );
 
 
-ALTER TABLE public.resource_type OWNER TO coops;
+ALTER TABLE public.resource_type OWNER TO digitallabsadmin;
 
 --
--- Name: resource_type_id_seq; Type: SEQUENCE; Schema: public; Owner: coops
+-- Name: resource_type_id_seq; Type: SEQUENCE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE SEQUENCE public.resource_type_id_seq
@@ -501,30 +639,31 @@ CREATE SEQUENCE public.resource_type_id_seq
     CACHE 1;
 
 
-ALTER TABLE public.resource_type_id_seq OWNER TO coops;
+ALTER TABLE public.resource_type_id_seq OWNER TO digitallabsadmin;
 
 --
--- Name: resource_type_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: coops
+-- Name: resource_type_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER SEQUENCE public.resource_type_id_seq OWNED BY public.resource_type.id;
 
 
 --
--- Name: section_to_question_mapping; Type: TABLE; Schema: public; Owner: coops
+-- Name: section_to_question_mapping; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.section_to_question_mapping (
     id text DEFAULT public.uuid_generate_v4() NOT NULL,
     section text,
-    question text
+    question text,
+    "order" integer
 );
 
 
-ALTER TABLE public.section_to_question_mapping OWNER TO coops;
+ALTER TABLE public.section_to_question_mapping OWNER TO digitallabsadmin;
 
 --
--- Name: sections; Type: TABLE; Schema: public; Owner: coops
+-- Name: sections; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.sections (
@@ -534,10 +673,10 @@ CREATE TABLE public.sections (
 );
 
 
-ALTER TABLE public.sections OWNER TO coops;
+ALTER TABLE public.sections OWNER TO digitallabsadmin;
 
 --
--- Name: session_answers; Type: TABLE; Schema: public; Owner: coops
+-- Name: session_answers; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.session_answers (
@@ -560,10 +699,10 @@ CREATE TABLE public.session_answers (
 );
 
 
-ALTER TABLE public.session_answers OWNER TO coops;
+ALTER TABLE public.session_answers OWNER TO digitallabsadmin;
 
 --
--- Name: session_completion; Type: TABLE; Schema: public; Owner: coops
+-- Name: session_completion; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.session_completion (
@@ -586,24 +725,26 @@ CREATE TABLE public.session_completion (
 );
 
 
-ALTER TABLE public.session_completion OWNER TO coops;
+ALTER TABLE public.session_completion OWNER TO digitallabsadmin;
 
 --
--- Name: session_to_break_mapping; Type: TABLE; Schema: public; Owner: coops
+-- Name: session_to_break_mapping; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.session_to_break_mapping (
     id text DEFAULT public.uuid_generate_v4() NOT NULL,
     session text,
     break_s integer,
-    "order" integer
+    "order" integer,
+    entry_animation integer,
+    exit_animation integer
 );
 
 
-ALTER TABLE public.session_to_break_mapping OWNER TO coops;
+ALTER TABLE public.session_to_break_mapping OWNER TO digitallabsadmin;
 
 --
--- Name: session_to_exercise_mapping; Type: TABLE; Schema: public; Owner: coops
+-- Name: session_to_exercise_mapping; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.session_to_exercise_mapping (
@@ -611,14 +752,16 @@ CREATE TABLE public.session_to_exercise_mapping (
     session text,
     exercise text,
     reps integer,
-    "order" integer
+    "order" integer,
+    entry_animation integer,
+    exit_animation integer
 );
 
 
-ALTER TABLE public.session_to_exercise_mapping OWNER TO coops;
+ALTER TABLE public.session_to_exercise_mapping OWNER TO digitallabsadmin;
 
 --
--- Name: session_to_message_mapping; Type: TABLE; Schema: public; Owner: coops
+-- Name: session_to_message_mapping; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.session_to_message_mapping (
@@ -627,14 +770,16 @@ CREATE TABLE public.session_to_message_mapping (
     message text,
     "order" integer,
     substitution text,
-    duration_s integer DEFAULT 10
+    duration_s integer DEFAULT 10,
+    entry_animation integer,
+    exit_animation integer
 );
 
 
-ALTER TABLE public.session_to_message_mapping OWNER TO coops;
+ALTER TABLE public.session_to_message_mapping OWNER TO digitallabsadmin;
 
 --
--- Name: session_to_survey_mapping; Type: TABLE; Schema: public; Owner: coops
+-- Name: session_to_survey_mapping; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.session_to_survey_mapping (
@@ -645,10 +790,10 @@ CREATE TABLE public.session_to_survey_mapping (
 );
 
 
-ALTER TABLE public.session_to_survey_mapping OWNER TO coops;
+ALTER TABLE public.session_to_survey_mapping OWNER TO digitallabsadmin;
 
 --
--- Name: session_to_survey_types; Type: TABLE; Schema: public; Owner: coops
+-- Name: session_to_survey_types; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.session_to_survey_types (
@@ -657,10 +802,10 @@ CREATE TABLE public.session_to_survey_types (
 );
 
 
-ALTER TABLE public.session_to_survey_types OWNER TO coops;
+ALTER TABLE public.session_to_survey_types OWNER TO digitallabsadmin;
 
 --
--- Name: sessions; Type: TABLE; Schema: public; Owner: coops
+-- Name: sessions; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.sessions (
@@ -674,10 +819,10 @@ CREATE TABLE public.sessions (
 );
 
 
-ALTER TABLE public.sessions OWNER TO coops;
+ALTER TABLE public.sessions OWNER TO digitallabsadmin;
 
 --
--- Name: setting_definition_to_setting_mapping; Type: TABLE; Schema: public; Owner: coops
+-- Name: setting_definition_to_setting_mapping; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.setting_definition_to_setting_mapping (
@@ -687,10 +832,10 @@ CREATE TABLE public.setting_definition_to_setting_mapping (
 );
 
 
-ALTER TABLE public.setting_definition_to_setting_mapping OWNER TO coops;
+ALTER TABLE public.setting_definition_to_setting_mapping OWNER TO digitallabsadmin;
 
 --
--- Name: settings; Type: TABLE; Schema: public; Owner: coops
+-- Name: settings; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.settings (
@@ -700,10 +845,10 @@ CREATE TABLE public.settings (
 );
 
 
-ALTER TABLE public.settings OWNER TO coops;
+ALTER TABLE public.settings OWNER TO digitallabsadmin;
 
 --
--- Name: settings_definitions; Type: TABLE; Schema: public; Owner: coops
+-- Name: settings_definitions; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.settings_definitions (
@@ -712,35 +857,23 @@ CREATE TABLE public.settings_definitions (
 );
 
 
-ALTER TABLE public.settings_definitions OWNER TO coops;
+ALTER TABLE public.settings_definitions OWNER TO digitallabsadmin;
 
 --
--- Name: share_states; Type: TABLE; Schema: public; Owner: coops
+-- Name: supported_animations; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
-CREATE TABLE public.share_states (
+CREATE TABLE public.supported_animations (
     id integer NOT NULL,
-    name text
+    name text NOT NULL,
+    description text NOT NULL
 );
 
 
-ALTER TABLE public.share_states OWNER TO coops;
+ALTER TABLE public.supported_animations OWNER TO digitallabsadmin;
 
 --
--- Name: shared; Type: TABLE; Schema: public; Owner: coops
---
-
-CREATE TABLE public.shared (
-    id text DEFAULT public.uuid_generate_v4() NOT NULL,
-    id_of_shared_entity text NOT NULL,
-    state integer
-);
-
-
-ALTER TABLE public.shared OWNER TO coops;
-
---
--- Name: supported_settings; Type: TABLE; Schema: public; Owner: coops
+-- Name: supported_settings; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.supported_settings (
@@ -751,10 +884,10 @@ CREATE TABLE public.supported_settings (
 );
 
 
-ALTER TABLE public.supported_settings OWNER TO coops;
+ALTER TABLE public.supported_settings OWNER TO digitallabsadmin;
 
 --
--- Name: survey_actions; Type: TABLE; Schema: public; Owner: coops
+-- Name: survey_actions; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.survey_actions (
@@ -763,10 +896,10 @@ CREATE TABLE public.survey_actions (
 );
 
 
-ALTER TABLE public.survey_actions OWNER TO coops;
+ALTER TABLE public.survey_actions OWNER TO digitallabsadmin;
 
 --
--- Name: survey_flows; Type: TABLE; Schema: public; Owner: coops
+-- Name: survey_flows; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.survey_flows (
@@ -781,23 +914,24 @@ CREATE TABLE public.survey_flows (
 );
 
 
-ALTER TABLE public.survey_flows OWNER TO coops;
+ALTER TABLE public.survey_flows OWNER TO digitallabsadmin;
 
 --
--- Name: survey_to_section_mapping; Type: TABLE; Schema: public; Owner: coops
+-- Name: survey_to_section_mapping; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.survey_to_section_mapping (
     id text DEFAULT public.uuid_generate_v4() NOT NULL,
     survey text,
-    section text
+    section text,
+    "order" integer
 );
 
 
-ALTER TABLE public.survey_to_section_mapping OWNER TO coops;
+ALTER TABLE public.survey_to_section_mapping OWNER TO digitallabsadmin;
 
 --
--- Name: surveys; Type: TABLE; Schema: public; Owner: coops
+-- Name: surveys; Type: TABLE; Schema: public; Owner: digitallabsadmin
 --
 
 CREATE TABLE public.surveys (
@@ -808,70 +942,38 @@ CREATE TABLE public.surveys (
 );
 
 
-ALTER TABLE public.surveys OWNER TO coops;
+ALTER TABLE public.surveys OWNER TO digitallabsadmin;
 
 --
--- Name: user_to_course_mapping; Type: TABLE; Schema: public; Owner: coops
+-- Name: user_to_organisation_mapping_states_id_seq; Type: SEQUENCE; Schema: public; Owner: digitallabsadmin
 --
 
-CREATE TABLE public.user_to_course_mapping (
-    id text DEFAULT public.uuid_generate_v4() NOT NULL,
-    "user" text,
-    course text
-);
+CREATE SEQUENCE public.user_to_organisation_mapping_states_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
 
 
-ALTER TABLE public.user_to_course_mapping OWNER TO coops;
-
---
--- Name: user_to_organisation_mapping; Type: TABLE; Schema: public; Owner: coops
---
-
-CREATE TABLE public.user_to_organisation_mapping (
-    id text DEFAULT public.uuid_generate_v4() NOT NULL,
-    "user" text,
-    organisation text,
-    scope integer
-);
-
-
-ALTER TABLE public.user_to_organisation_mapping OWNER TO coops;
+ALTER TABLE public.user_to_organisation_mapping_states_id_seq OWNER TO digitallabsadmin;
 
 --
--- Name: user_to_plan_mapping; Type: TABLE; Schema: public; Owner: coops
+-- Name: capability_types id; Type: DEFAULT; Schema: public; Owner: digitallabsadmin
 --
 
-CREATE TABLE public.user_to_plan_mapping (
-    id text DEFAULT public.uuid_generate_v4() NOT NULL,
-    "user" text,
-    plan text
-);
+ALTER TABLE ONLY public.capability_types ALTER COLUMN id SET DEFAULT nextval('public.capability_types_id_seq'::regclass);
 
-
-ALTER TABLE public.user_to_plan_mapping OWNER TO coops;
 
 --
--- Name: users; Type: TABLE; Schema: public; Owner: coops
---
-
-CREATE TABLE public.users (
-    id text DEFAULT public.uuid_generate_v4() NOT NULL,
-    external_id text,
-    created timestamp without time zone DEFAULT timezone('utc'::text, now())
-);
-
-
-ALTER TABLE public.users OWNER TO coops;
-
---
--- Name: resource_type id; Type: DEFAULT; Schema: public; Owner: coops
+-- Name: resource_type id; Type: DEFAULT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.resource_type ALTER COLUMN id SET DEFAULT nextval('public.resource_type_id_seq'::regclass);
 
 
 --
--- Name: base64_resources base64_resources_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: base64_resources base64_resources_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.base64_resources
@@ -879,7 +981,23 @@ ALTER TABLE ONLY public.base64_resources
 
 
 --
--- Name: course_answers course_answers_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: capability_types capability_types_name_key; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
+--
+
+ALTER TABLE ONLY public.capability_types
+    ADD CONSTRAINT capability_types_name_key UNIQUE (name);
+
+
+--
+-- Name: capability_types capability_types_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
+--
+
+ALTER TABLE ONLY public.capability_types
+    ADD CONSTRAINT capability_types_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: course_answers course_answers_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.course_answers
@@ -887,7 +1005,7 @@ ALTER TABLE ONLY public.course_answers
 
 
 --
--- Name: course_state_types course_state_types_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: course_state_types course_state_types_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.course_state_types
@@ -895,7 +1013,7 @@ ALTER TABLE ONLY public.course_state_types
 
 
 --
--- Name: course_survey_schedule course_survey_schedule_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: course_survey_schedule course_survey_schedule_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.course_survey_schedule
@@ -903,7 +1021,7 @@ ALTER TABLE ONLY public.course_survey_schedule
 
 
 --
--- Name: course_to_plan_mapping course_to_plan_mapping_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: course_to_plan_mapping course_to_plan_mapping_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.course_to_plan_mapping
@@ -911,7 +1029,7 @@ ALTER TABLE ONLY public.course_to_plan_mapping
 
 
 --
--- Name: course_to_survey_mapping course_to_survey_mapping_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: course_to_survey_mapping course_to_survey_mapping_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.course_to_survey_mapping
@@ -919,7 +1037,7 @@ ALTER TABLE ONLY public.course_to_survey_mapping
 
 
 --
--- Name: course_to_survey_types course_to_survey_types_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: course_to_survey_types course_to_survey_types_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.course_to_survey_types
@@ -927,7 +1045,7 @@ ALTER TABLE ONLY public.course_to_survey_types
 
 
 --
--- Name: courses courses_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: courses courses_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.courses
@@ -935,7 +1053,7 @@ ALTER TABLE ONLY public.courses
 
 
 --
--- Name: days_of_the_week days_of_the_week_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: days_of_the_week days_of_the_week_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.days_of_the_week
@@ -943,23 +1061,7 @@ ALTER TABLE ONLY public.days_of_the_week
 
 
 --
--- Name: deployment_state_types deployment_state_types_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
---
-
-ALTER TABLE ONLY public.deployment_state_types
-    ADD CONSTRAINT deployment_state_types_pkey PRIMARY KEY (id);
-
-
---
--- Name: deployments deployments_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
---
-
-ALTER TABLE ONLY public.deployments
-    ADD CONSTRAINT deployments_pkey PRIMARY KEY (id);
-
-
---
--- Name: exercise_to_media_mapping exercise_to_media_mapping_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: exercise_to_media_mapping exercise_to_media_mapping_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.exercise_to_media_mapping
@@ -967,7 +1069,7 @@ ALTER TABLE ONLY public.exercise_to_media_mapping
 
 
 --
--- Name: exercises exercises_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: exercises exercises_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.exercises
@@ -975,7 +1077,23 @@ ALTER TABLE ONLY public.exercises
 
 
 --
--- Name: flow_action_types flow_action_types_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: export_to_course_mapping export_to_course_mapping_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
+--
+
+ALTER TABLE ONLY public.export_to_course_mapping
+    ADD CONSTRAINT export_to_course_mapping_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: exports exports_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
+--
+
+ALTER TABLE ONLY public.exports
+    ADD CONSTRAINT exports_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: flow_action_types flow_action_types_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.flow_action_types
@@ -983,7 +1101,7 @@ ALTER TABLE ONLY public.flow_action_types
 
 
 --
--- Name: media_context_types media_context_types_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: media_context_types media_context_types_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.media_context_types
@@ -991,7 +1109,7 @@ ALTER TABLE ONLY public.media_context_types
 
 
 --
--- Name: media media_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: media media_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.media
@@ -999,7 +1117,7 @@ ALTER TABLE ONLY public.media
 
 
 --
--- Name: message_types message_types_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: message_types message_types_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.message_types
@@ -1007,7 +1125,7 @@ ALTER TABLE ONLY public.message_types
 
 
 --
--- Name: messages messages_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: messages messages_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.messages
@@ -1015,39 +1133,7 @@ ALTER TABLE ONLY public.messages
 
 
 --
--- Name: organisation_scopes organisation_scopes_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
---
-
-ALTER TABLE ONLY public.organisation_scopes
-    ADD CONSTRAINT organisation_scopes_pkey PRIMARY KEY (id);
-
-
---
--- Name: organisation_to_course_mapping organisation_to_course_mapping_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
---
-
-ALTER TABLE ONLY public.organisation_to_course_mapping
-    ADD CONSTRAINT organisation_to_course_mapping_pkey PRIMARY KEY (id);
-
-
---
--- Name: organisation_to_plan_mapping organisation_to_plan_mapping_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
---
-
-ALTER TABLE ONLY public.organisation_to_plan_mapping
-    ADD CONSTRAINT organisation_to_plan_mapping_pkey PRIMARY KEY (id);
-
-
---
--- Name: organisations organisations_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
---
-
-ALTER TABLE ONLY public.organisations
-    ADD CONSTRAINT organisations_pkey PRIMARY KEY (id);
-
-
---
--- Name: period_type period_type_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: period_type period_type_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.period_type
@@ -1055,7 +1141,15 @@ ALTER TABLE ONLY public.period_type
 
 
 --
--- Name: plan_to_session_mapping plan_to_session_mapping_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: plan_survey_schedule plan_survey_schedule_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
+--
+
+ALTER TABLE ONLY public.plan_survey_schedule
+    ADD CONSTRAINT plan_survey_schedule_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: plan_to_session_mapping plan_to_session_mapping_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.plan_to_session_mapping
@@ -1063,7 +1157,7 @@ ALTER TABLE ONLY public.plan_to_session_mapping
 
 
 --
--- Name: plan_to_setting_definition_mapping plan_to_setting_definition_mapping_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: plan_to_setting_definition_mapping plan_to_setting_definition_mapping_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.plan_to_setting_definition_mapping
@@ -1071,7 +1165,15 @@ ALTER TABLE ONLY public.plan_to_setting_definition_mapping
 
 
 --
--- Name: plans plans_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: plan_to_survey_mapping plan_to_survey_mapping_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
+--
+
+ALTER TABLE ONLY public.plan_to_survey_mapping
+    ADD CONSTRAINT plan_to_survey_mapping_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: plans plans_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.plans
@@ -1079,31 +1181,7 @@ ALTER TABLE ONLY public.plans
 
 
 --
--- Name: publish_states publish_states_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
---
-
-ALTER TABLE ONLY public.publish_states
-    ADD CONSTRAINT publish_states_pkey PRIMARY KEY (id);
-
-
---
--- Name: published published_id_of_published_entity_key; Type: CONSTRAINT; Schema: public; Owner: coops
---
-
-ALTER TABLE ONLY public.published
-    ADD CONSTRAINT published_id_of_published_entity_key UNIQUE (id_of_published_entity);
-
-
---
--- Name: published published_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
---
-
-ALTER TABLE ONLY public.published
-    ADD CONSTRAINT published_pkey PRIMARY KEY (id);
-
-
---
--- Name: question_types question_types_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: question_types question_types_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.question_types
@@ -1111,7 +1189,7 @@ ALTER TABLE ONLY public.question_types
 
 
 --
--- Name: questions questions_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: questions questions_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.questions
@@ -1119,7 +1197,7 @@ ALTER TABLE ONLY public.questions
 
 
 --
--- Name: resource_type resource_type_name_key; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: resource_type resource_type_name_key; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.resource_type
@@ -1127,7 +1205,7 @@ ALTER TABLE ONLY public.resource_type
 
 
 --
--- Name: resource_type resource_type_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: resource_type resource_type_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.resource_type
@@ -1135,7 +1213,7 @@ ALTER TABLE ONLY public.resource_type
 
 
 --
--- Name: section_to_question_mapping section_to_question_mapping_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: section_to_question_mapping section_to_question_mapping_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.section_to_question_mapping
@@ -1143,7 +1221,7 @@ ALTER TABLE ONLY public.section_to_question_mapping
 
 
 --
--- Name: sections sections_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: sections sections_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.sections
@@ -1151,7 +1229,7 @@ ALTER TABLE ONLY public.sections
 
 
 --
--- Name: session_answers session_answers_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: session_answers session_answers_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.session_answers
@@ -1159,7 +1237,7 @@ ALTER TABLE ONLY public.session_answers
 
 
 --
--- Name: session_completion session_completion_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: session_completion session_completion_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.session_completion
@@ -1167,7 +1245,7 @@ ALTER TABLE ONLY public.session_completion
 
 
 --
--- Name: session_to_break_mapping session_to_break_mapping_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: session_to_break_mapping session_to_break_mapping_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.session_to_break_mapping
@@ -1175,7 +1253,7 @@ ALTER TABLE ONLY public.session_to_break_mapping
 
 
 --
--- Name: session_to_exercise_mapping session_to_exercise_mapping_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: session_to_exercise_mapping session_to_exercise_mapping_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.session_to_exercise_mapping
@@ -1183,7 +1261,7 @@ ALTER TABLE ONLY public.session_to_exercise_mapping
 
 
 --
--- Name: session_to_message_mapping session_to_message_mapping_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: session_to_message_mapping session_to_message_mapping_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.session_to_message_mapping
@@ -1191,7 +1269,7 @@ ALTER TABLE ONLY public.session_to_message_mapping
 
 
 --
--- Name: session_to_survey_mapping session_to_survey_mapping_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: session_to_survey_mapping session_to_survey_mapping_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.session_to_survey_mapping
@@ -1199,7 +1277,7 @@ ALTER TABLE ONLY public.session_to_survey_mapping
 
 
 --
--- Name: session_to_survey_types session_to_survey_types_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: session_to_survey_types session_to_survey_types_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.session_to_survey_types
@@ -1207,7 +1285,7 @@ ALTER TABLE ONLY public.session_to_survey_types
 
 
 --
--- Name: sessions sessions_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: sessions sessions_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.sessions
@@ -1215,7 +1293,7 @@ ALTER TABLE ONLY public.sessions
 
 
 --
--- Name: settings_definitions settings_definitions_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: settings_definitions settings_definitions_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.settings_definitions
@@ -1223,7 +1301,7 @@ ALTER TABLE ONLY public.settings_definitions
 
 
 --
--- Name: setting_definition_to_setting_mapping settings_definitions_to_settings_mapping_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: setting_definition_to_setting_mapping settings_definitions_to_settings_mapping_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.setting_definition_to_setting_mapping
@@ -1231,7 +1309,7 @@ ALTER TABLE ONLY public.setting_definition_to_setting_mapping
 
 
 --
--- Name: settings settings_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: settings settings_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.settings
@@ -1239,31 +1317,23 @@ ALTER TABLE ONLY public.settings
 
 
 --
--- Name: share_states share_states_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: supported_animations supported_animations_name_key; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
-ALTER TABLE ONLY public.share_states
-    ADD CONSTRAINT share_states_pkey PRIMARY KEY (id);
-
-
---
--- Name: shared shared_id_of_shared_entity_key; Type: CONSTRAINT; Schema: public; Owner: coops
---
-
-ALTER TABLE ONLY public.shared
-    ADD CONSTRAINT shared_id_of_shared_entity_key UNIQUE (id_of_shared_entity);
+ALTER TABLE ONLY public.supported_animations
+    ADD CONSTRAINT supported_animations_name_key UNIQUE (name);
 
 
 --
--- Name: shared shared_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: supported_animations supported_animations_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
-ALTER TABLE ONLY public.shared
-    ADD CONSTRAINT shared_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.supported_animations
+    ADD CONSTRAINT supported_animations_pkey PRIMARY KEY (id);
 
 
 --
--- Name: supported_settings supported_settings_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: supported_settings supported_settings_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.supported_settings
@@ -1271,7 +1341,7 @@ ALTER TABLE ONLY public.supported_settings
 
 
 --
--- Name: survey_actions survey_actions_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: survey_actions survey_actions_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.survey_actions
@@ -1279,7 +1349,7 @@ ALTER TABLE ONLY public.survey_actions
 
 
 --
--- Name: survey_flows survey_flows_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: survey_flows survey_flows_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.survey_flows
@@ -1287,7 +1357,7 @@ ALTER TABLE ONLY public.survey_flows
 
 
 --
--- Name: survey_to_section_mapping survey_to_section_mapping_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: survey_to_section_mapping survey_to_section_mapping_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.survey_to_section_mapping
@@ -1295,7 +1365,7 @@ ALTER TABLE ONLY public.survey_to_section_mapping
 
 
 --
--- Name: surveys surveys_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
+-- Name: surveys surveys_pkey; Type: CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.surveys
@@ -1303,39 +1373,7 @@ ALTER TABLE ONLY public.surveys
 
 
 --
--- Name: user_to_course_mapping user_to_course_mappincg_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
---
-
-ALTER TABLE ONLY public.user_to_course_mapping
-    ADD CONSTRAINT user_to_course_mappincg_pkey PRIMARY KEY (id);
-
-
---
--- Name: user_to_organisation_mapping user_to_organisation_mapping_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
---
-
-ALTER TABLE ONLY public.user_to_organisation_mapping
-    ADD CONSTRAINT user_to_organisation_mapping_pkey PRIMARY KEY (id);
-
-
---
--- Name: user_to_plan_mapping user_to_plan_mapping_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
---
-
-ALTER TABLE ONLY public.user_to_plan_mapping
-    ADD CONSTRAINT user_to_plan_mapping_pkey PRIMARY KEY (id);
-
-
---
--- Name: users users_pkey; Type: CONSTRAINT; Schema: public; Owner: coops
---
-
-ALTER TABLE ONLY public.users
-    ADD CONSTRAINT users_pkey PRIMARY KEY (id);
-
-
---
--- Name: course_answers course_answers_course_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: course_answers course_answers_course_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.course_answers
@@ -1343,7 +1381,7 @@ ALTER TABLE ONLY public.course_answers
 
 
 --
--- Name: course_answers course_answers_question_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: course_answers course_answers_question_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.course_answers
@@ -1351,7 +1389,7 @@ ALTER TABLE ONLY public.course_answers
 
 
 --
--- Name: course_answers course_answers_section_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: course_answers course_answers_section_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.course_answers
@@ -1359,7 +1397,7 @@ ALTER TABLE ONLY public.course_answers
 
 
 --
--- Name: course_answers course_answers_survey_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: course_answers course_answers_survey_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.course_answers
@@ -1367,7 +1405,7 @@ ALTER TABLE ONLY public.course_answers
 
 
 --
--- Name: course_answers course_answers_survey_type_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: course_answers course_answers_survey_type_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.course_answers
@@ -1375,7 +1413,7 @@ ALTER TABLE ONLY public.course_answers
 
 
 --
--- Name: course_survey_schedule course_survey_schedule_mapping_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: course_survey_schedule course_survey_schedule_mapping_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.course_survey_schedule
@@ -1383,7 +1421,7 @@ ALTER TABLE ONLY public.course_survey_schedule
 
 
 --
--- Name: course_survey_schedule course_survey_schedule_period_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: course_survey_schedule course_survey_schedule_period_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.course_survey_schedule
@@ -1391,7 +1429,7 @@ ALTER TABLE ONLY public.course_survey_schedule
 
 
 --
--- Name: course_to_plan_mapping course_to_plan_mapping_course_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: course_to_plan_mapping course_to_plan_mapping_course_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.course_to_plan_mapping
@@ -1399,7 +1437,7 @@ ALTER TABLE ONLY public.course_to_plan_mapping
 
 
 --
--- Name: course_to_plan_mapping course_to_plan_mapping_plan_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: course_to_plan_mapping course_to_plan_mapping_plan_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.course_to_plan_mapping
@@ -1407,7 +1445,7 @@ ALTER TABLE ONLY public.course_to_plan_mapping
 
 
 --
--- Name: course_to_survey_mapping course_to_survey_mapping_course_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: course_to_survey_mapping course_to_survey_mapping_course_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.course_to_survey_mapping
@@ -1415,7 +1453,7 @@ ALTER TABLE ONLY public.course_to_survey_mapping
 
 
 --
--- Name: course_to_survey_mapping course_to_survey_mapping_survey_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: course_to_survey_mapping course_to_survey_mapping_survey_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.course_to_survey_mapping
@@ -1423,7 +1461,7 @@ ALTER TABLE ONLY public.course_to_survey_mapping
 
 
 --
--- Name: course_to_survey_mapping course_to_survey_mapping_type_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: course_to_survey_mapping course_to_survey_mapping_type_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.course_to_survey_mapping
@@ -1431,7 +1469,7 @@ ALTER TABLE ONLY public.course_to_survey_mapping
 
 
 --
--- Name: courses courses_state_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: courses courses_state_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.courses
@@ -1439,23 +1477,7 @@ ALTER TABLE ONLY public.courses
 
 
 --
--- Name: deployments deployments_course_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
---
-
-ALTER TABLE ONLY public.deployments
-    ADD CONSTRAINT deployments_course_fkey FOREIGN KEY (course_id) REFERENCES public.courses(id) ON UPDATE CASCADE ON DELETE CASCADE;
-
-
---
--- Name: deployments deployments_state_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
---
-
-ALTER TABLE ONLY public.deployments
-    ADD CONSTRAINT deployments_state_fkey FOREIGN KEY (state) REFERENCES public.deployment_state_types(id) ON UPDATE CASCADE ON DELETE CASCADE;
-
-
---
--- Name: exercise_to_media_mapping exercise_to_media_mapping_exercise_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: exercise_to_media_mapping exercise_to_media_mapping_exercise_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.exercise_to_media_mapping
@@ -1463,7 +1485,7 @@ ALTER TABLE ONLY public.exercise_to_media_mapping
 
 
 --
--- Name: exercise_to_media_mapping exercise_to_media_mapping_media_context_type_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: exercise_to_media_mapping exercise_to_media_mapping_media_context_type_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.exercise_to_media_mapping
@@ -1471,7 +1493,7 @@ ALTER TABLE ONLY public.exercise_to_media_mapping
 
 
 --
--- Name: exercise_to_media_mapping exercise_to_media_mapping_media_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: exercise_to_media_mapping exercise_to_media_mapping_media_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.exercise_to_media_mapping
@@ -1479,7 +1501,7 @@ ALTER TABLE ONLY public.exercise_to_media_mapping
 
 
 --
--- Name: exercises exercises_description_resource_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: exercises exercises_description_resource_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.exercises
@@ -1487,7 +1509,7 @@ ALTER TABLE ONLY public.exercises
 
 
 --
--- Name: exercises exercises_instructions_resource_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: exercises exercises_instructions_resource_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.exercises
@@ -1495,7 +1517,15 @@ ALTER TABLE ONLY public.exercises
 
 
 --
--- Name: media media_internal_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: export_to_course_mapping export_to_course_mapping_export_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
+--
+
+ALTER TABLE ONLY public.export_to_course_mapping
+    ADD CONSTRAINT export_to_course_mapping_export_fkey FOREIGN KEY (export) REFERENCES public.exports(id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+
+--
+-- Name: media media_internal_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.media
@@ -1503,7 +1533,7 @@ ALTER TABLE ONLY public.media
 
 
 --
--- Name: messages messages_type_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: messages messages_type_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.messages
@@ -1511,39 +1541,23 @@ ALTER TABLE ONLY public.messages
 
 
 --
--- Name: organisation_to_course_mapping organisation_to_course_mapping_course_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: plan_survey_schedule plan_survey_schedule_mapping_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
-ALTER TABLE ONLY public.organisation_to_course_mapping
-    ADD CONSTRAINT organisation_to_course_mapping_course_fkey FOREIGN KEY (course) REFERENCES public.courses(id) ON UPDATE CASCADE ON DELETE CASCADE;
-
-
---
--- Name: organisation_to_course_mapping organisation_to_course_mapping_organisation_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
---
-
-ALTER TABLE ONLY public.organisation_to_course_mapping
-    ADD CONSTRAINT organisation_to_course_mapping_organisation_fkey FOREIGN KEY (organisation) REFERENCES public.organisations(id) ON UPDATE CASCADE ON DELETE CASCADE;
+ALTER TABLE ONLY public.plan_survey_schedule
+    ADD CONSTRAINT plan_survey_schedule_mapping_fkey FOREIGN KEY (mapping) REFERENCES public.plan_to_survey_mapping(id) ON UPDATE CASCADE ON DELETE CASCADE;
 
 
 --
--- Name: organisation_to_plan_mapping organisation_to_plan_mapping_organisation_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: plan_survey_schedule plan_survey_schedule_period_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
-ALTER TABLE ONLY public.organisation_to_plan_mapping
-    ADD CONSTRAINT organisation_to_plan_mapping_organisation_fkey FOREIGN KEY (organisation) REFERENCES public.organisations(id) ON UPDATE CASCADE ON DELETE CASCADE;
-
-
---
--- Name: organisation_to_plan_mapping organisation_to_plan_mapping_plan_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
---
-
-ALTER TABLE ONLY public.organisation_to_plan_mapping
-    ADD CONSTRAINT organisation_to_plan_mapping_plan_fkey FOREIGN KEY (plan) REFERENCES public.plans(id) ON UPDATE CASCADE ON DELETE CASCADE;
+ALTER TABLE ONLY public.plan_survey_schedule
+    ADD CONSTRAINT plan_survey_schedule_period_fkey FOREIGN KEY (period) REFERENCES public.period_type(id) ON UPDATE CASCADE ON DELETE CASCADE;
 
 
 --
--- Name: plan_to_session_mapping plan_to_session_mapping_day_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: plan_to_session_mapping plan_to_session_mapping_day_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.plan_to_session_mapping
@@ -1551,7 +1565,7 @@ ALTER TABLE ONLY public.plan_to_session_mapping
 
 
 --
--- Name: plan_to_session_mapping plan_to_session_mapping_plan_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: plan_to_session_mapping plan_to_session_mapping_plan_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.plan_to_session_mapping
@@ -1559,7 +1573,7 @@ ALTER TABLE ONLY public.plan_to_session_mapping
 
 
 --
--- Name: plan_to_session_mapping plan_to_session_mapping_session_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: plan_to_session_mapping plan_to_session_mapping_session_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.plan_to_session_mapping
@@ -1567,7 +1581,7 @@ ALTER TABLE ONLY public.plan_to_session_mapping
 
 
 --
--- Name: plan_to_setting_definition_mapping plan_to_setting_definition_mapping_definition_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: plan_to_setting_definition_mapping plan_to_setting_definition_mapping_definition_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.plan_to_setting_definition_mapping
@@ -1575,7 +1589,7 @@ ALTER TABLE ONLY public.plan_to_setting_definition_mapping
 
 
 --
--- Name: plan_to_setting_definition_mapping plan_to_setting_definition_mapping_plan_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: plan_to_setting_definition_mapping plan_to_setting_definition_mapping_plan_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.plan_to_setting_definition_mapping
@@ -1583,7 +1597,31 @@ ALTER TABLE ONLY public.plan_to_setting_definition_mapping
 
 
 --
--- Name: plans plans_based_on_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: plan_to_survey_mapping plan_to_survey_mapping_plan_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
+--
+
+ALTER TABLE ONLY public.plan_to_survey_mapping
+    ADD CONSTRAINT plan_to_survey_mapping_plan_fkey FOREIGN KEY (plan) REFERENCES public.plans(id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+
+--
+-- Name: plan_to_survey_mapping plan_to_survey_mapping_survey_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
+--
+
+ALTER TABLE ONLY public.plan_to_survey_mapping
+    ADD CONSTRAINT plan_to_survey_mapping_survey_fkey FOREIGN KEY (survey) REFERENCES public.surveys(id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+
+--
+-- Name: plan_to_survey_mapping plan_to_survey_mapping_type_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
+--
+
+ALTER TABLE ONLY public.plan_to_survey_mapping
+    ADD CONSTRAINT plan_to_survey_mapping_type_fkey FOREIGN KEY (type) REFERENCES public.course_to_survey_types(id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+
+--
+-- Name: plans plans_based_on_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.plans
@@ -1591,7 +1629,7 @@ ALTER TABLE ONLY public.plans
 
 
 --
--- Name: plans plans_description_resource_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: plans plans_description_resource_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.plans
@@ -1599,7 +1637,7 @@ ALTER TABLE ONLY public.plans
 
 
 --
--- Name: plans plans_diagnostic_resource_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: plans plans_diagnostic_resource_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.plans
@@ -1607,7 +1645,7 @@ ALTER TABLE ONLY public.plans
 
 
 --
--- Name: plans plans_instructions_resource_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: plans plans_instructions_resource_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.plans
@@ -1615,15 +1653,7 @@ ALTER TABLE ONLY public.plans
 
 
 --
--- Name: published published_state_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
---
-
-ALTER TABLE ONLY public.published
-    ADD CONSTRAINT published_state_fkey FOREIGN KEY (state) REFERENCES public.publish_states(id) ON UPDATE CASCADE ON DELETE CASCADE;
-
-
---
--- Name: questions questions_type_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: questions questions_type_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.questions
@@ -1631,7 +1661,7 @@ ALTER TABLE ONLY public.questions
 
 
 --
--- Name: section_to_question_mapping section_to_question_mapping_question_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: section_to_question_mapping section_to_question_mapping_question_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.section_to_question_mapping
@@ -1639,7 +1669,7 @@ ALTER TABLE ONLY public.section_to_question_mapping
 
 
 --
--- Name: section_to_question_mapping section_to_question_mapping_section_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: section_to_question_mapping section_to_question_mapping_section_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.section_to_question_mapping
@@ -1647,7 +1677,7 @@ ALTER TABLE ONLY public.section_to_question_mapping
 
 
 --
--- Name: session_answers session_answers_course_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: session_answers session_answers_course_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.session_answers
@@ -1655,7 +1685,7 @@ ALTER TABLE ONLY public.session_answers
 
 
 --
--- Name: session_answers session_answers_plan_based_on_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: session_answers session_answers_plan_based_on_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.session_answers
@@ -1663,7 +1693,7 @@ ALTER TABLE ONLY public.session_answers
 
 
 --
--- Name: session_answers session_answers_plan_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: session_answers session_answers_plan_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.session_answers
@@ -1671,7 +1701,7 @@ ALTER TABLE ONLY public.session_answers
 
 
 --
--- Name: session_answers session_answers_question_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: session_answers session_answers_question_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.session_answers
@@ -1679,7 +1709,7 @@ ALTER TABLE ONLY public.session_answers
 
 
 --
--- Name: session_answers session_answers_section_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: session_answers session_answers_section_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.session_answers
@@ -1687,7 +1717,7 @@ ALTER TABLE ONLY public.session_answers
 
 
 --
--- Name: session_answers session_answers_session_based_on_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: session_answers session_answers_session_based_on_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.session_answers
@@ -1695,7 +1725,7 @@ ALTER TABLE ONLY public.session_answers
 
 
 --
--- Name: session_answers session_answers_session_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: session_answers session_answers_session_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.session_answers
@@ -1703,7 +1733,7 @@ ALTER TABLE ONLY public.session_answers
 
 
 --
--- Name: session_answers session_answers_survey_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: session_answers session_answers_survey_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.session_answers
@@ -1711,7 +1741,7 @@ ALTER TABLE ONLY public.session_answers
 
 
 --
--- Name: session_answers session_answers_survey_type_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: session_answers session_answers_survey_type_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.session_answers
@@ -1719,7 +1749,7 @@ ALTER TABLE ONLY public.session_answers
 
 
 --
--- Name: session_completion session_completion_course_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: session_completion session_completion_course_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.session_completion
@@ -1727,7 +1757,7 @@ ALTER TABLE ONLY public.session_completion
 
 
 --
--- Name: session_completion session_completion_last_attempted_exercise_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: session_completion session_completion_last_attempted_exercise_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.session_completion
@@ -1735,7 +1765,7 @@ ALTER TABLE ONLY public.session_completion
 
 
 --
--- Name: session_completion session_completion_plan_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: session_completion session_completion_plan_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.session_completion
@@ -1743,7 +1773,7 @@ ALTER TABLE ONLY public.session_completion
 
 
 --
--- Name: session_completion session_completion_session_based_on_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: session_completion session_completion_session_based_on_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.session_completion
@@ -1751,7 +1781,7 @@ ALTER TABLE ONLY public.session_completion
 
 
 --
--- Name: session_completion session_completion_session_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: session_completion session_completion_session_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.session_completion
@@ -1759,7 +1789,23 @@ ALTER TABLE ONLY public.session_completion
 
 
 --
--- Name: session_to_break_mapping session_to_break_mapping_session_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: session_to_break_mapping session_to_break_mapping_entry_animation_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
+--
+
+ALTER TABLE ONLY public.session_to_break_mapping
+    ADD CONSTRAINT session_to_break_mapping_entry_animation_fkey FOREIGN KEY (entry_animation) REFERENCES public.supported_animations(id) ON UPDATE CASCADE ON DELETE SET NULL;
+
+
+--
+-- Name: session_to_break_mapping session_to_break_mapping_exit_animation_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
+--
+
+ALTER TABLE ONLY public.session_to_break_mapping
+    ADD CONSTRAINT session_to_break_mapping_exit_animation_fkey FOREIGN KEY (exit_animation) REFERENCES public.supported_animations(id) ON UPDATE CASCADE ON DELETE SET NULL;
+
+
+--
+-- Name: session_to_break_mapping session_to_break_mapping_session_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.session_to_break_mapping
@@ -1767,7 +1813,15 @@ ALTER TABLE ONLY public.session_to_break_mapping
 
 
 --
--- Name: session_to_exercise_mapping session_to_exercise_mapping_exercise_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: session_to_exercise_mapping session_to_exercise_mapping_entry_animation_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
+--
+
+ALTER TABLE ONLY public.session_to_exercise_mapping
+    ADD CONSTRAINT session_to_exercise_mapping_entry_animation_fkey FOREIGN KEY (entry_animation) REFERENCES public.supported_animations(id) ON UPDATE CASCADE ON DELETE SET NULL;
+
+
+--
+-- Name: session_to_exercise_mapping session_to_exercise_mapping_exercise_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.session_to_exercise_mapping
@@ -1775,7 +1829,15 @@ ALTER TABLE ONLY public.session_to_exercise_mapping
 
 
 --
--- Name: session_to_exercise_mapping session_to_exercise_mapping_session_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: session_to_exercise_mapping session_to_exercise_mapping_exit_animation_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
+--
+
+ALTER TABLE ONLY public.session_to_exercise_mapping
+    ADD CONSTRAINT session_to_exercise_mapping_exit_animation_fkey FOREIGN KEY (exit_animation) REFERENCES public.supported_animations(id) ON UPDATE CASCADE ON DELETE SET NULL;
+
+
+--
+-- Name: session_to_exercise_mapping session_to_exercise_mapping_session_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.session_to_exercise_mapping
@@ -1783,7 +1845,7 @@ ALTER TABLE ONLY public.session_to_exercise_mapping
 
 
 --
--- Name: session_to_message_mapping session_to_message_mapping_message_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: session_to_message_mapping session_to_message_mapping_message_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.session_to_message_mapping
@@ -1791,7 +1853,7 @@ ALTER TABLE ONLY public.session_to_message_mapping
 
 
 --
--- Name: session_to_message_mapping session_to_message_mapping_session_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: session_to_message_mapping session_to_message_mapping_session_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.session_to_message_mapping
@@ -1799,7 +1861,7 @@ ALTER TABLE ONLY public.session_to_message_mapping
 
 
 --
--- Name: session_to_survey_mapping session_to_survey_mapping_session_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: session_to_survey_mapping session_to_survey_mapping_session_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.session_to_survey_mapping
@@ -1807,7 +1869,7 @@ ALTER TABLE ONLY public.session_to_survey_mapping
 
 
 --
--- Name: session_to_survey_mapping session_to_survey_mapping_survey_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: session_to_survey_mapping session_to_survey_mapping_survey_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.session_to_survey_mapping
@@ -1815,7 +1877,7 @@ ALTER TABLE ONLY public.session_to_survey_mapping
 
 
 --
--- Name: session_to_survey_mapping session_to_survey_mapping_type_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: session_to_survey_mapping session_to_survey_mapping_type_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.session_to_survey_mapping
@@ -1823,7 +1885,7 @@ ALTER TABLE ONLY public.session_to_survey_mapping
 
 
 --
--- Name: sessions sessions_based_on_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: sessions sessions_based_on_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.sessions
@@ -1831,7 +1893,7 @@ ALTER TABLE ONLY public.sessions
 
 
 --
--- Name: sessions sessions_description_resource_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: sessions sessions_description_resource_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.sessions
@@ -1839,7 +1901,7 @@ ALTER TABLE ONLY public.sessions
 
 
 --
--- Name: sessions sessions_instructions_resource_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: sessions sessions_instructions_resource_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.sessions
@@ -1847,7 +1909,7 @@ ALTER TABLE ONLY public.sessions
 
 
 --
--- Name: setting_definition_to_setting_mapping settings_definitions_to_settings_mapping_definition_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: setting_definition_to_setting_mapping settings_definitions_to_settings_mapping_definition_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.setting_definition_to_setting_mapping
@@ -1855,7 +1917,7 @@ ALTER TABLE ONLY public.setting_definition_to_setting_mapping
 
 
 --
--- Name: setting_definition_to_setting_mapping settings_definitions_to_settings_mapping_setting_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: setting_definition_to_setting_mapping settings_definitions_to_settings_mapping_setting_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.setting_definition_to_setting_mapping
@@ -1863,7 +1925,7 @@ ALTER TABLE ONLY public.setting_definition_to_setting_mapping
 
 
 --
--- Name: settings settings_setting_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: settings settings_setting_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.settings
@@ -1871,15 +1933,7 @@ ALTER TABLE ONLY public.settings
 
 
 --
--- Name: shared shared_state_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
---
-
-ALTER TABLE ONLY public.shared
-    ADD CONSTRAINT shared_state_fkey FOREIGN KEY (state) REFERENCES public.share_states(id) ON UPDATE CASCADE ON DELETE CASCADE;
-
-
---
--- Name: survey_flows survey_flows_if_question_id_is_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: survey_flows survey_flows_if_question_id_is_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.survey_flows
@@ -1887,7 +1941,7 @@ ALTER TABLE ONLY public.survey_flows
 
 
 --
--- Name: survey_flows survey_flows_if_section_id_is_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: survey_flows survey_flows_if_section_id_is_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.survey_flows
@@ -1895,7 +1949,7 @@ ALTER TABLE ONLY public.survey_flows
 
 
 --
--- Name: survey_flows survey_flows_if_survey_id_is_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: survey_flows survey_flows_if_survey_id_is_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.survey_flows
@@ -1903,7 +1957,7 @@ ALTER TABLE ONLY public.survey_flows
 
 
 --
--- Name: survey_flows survey_flows_on_question_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: survey_flows survey_flows_on_question_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.survey_flows
@@ -1911,7 +1965,7 @@ ALTER TABLE ONLY public.survey_flows
 
 
 --
--- Name: survey_flows survey_flows_then_do_action_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: survey_flows survey_flows_then_do_action_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.survey_flows
@@ -1919,7 +1973,7 @@ ALTER TABLE ONLY public.survey_flows
 
 
 --
--- Name: survey_to_section_mapping survey_to_section_mapping_section_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: survey_to_section_mapping survey_to_section_mapping_section_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.survey_to_section_mapping
@@ -1927,67 +1981,11 @@ ALTER TABLE ONLY public.survey_to_section_mapping
 
 
 --
--- Name: survey_to_section_mapping survey_to_section_mapping_survey_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
+-- Name: survey_to_section_mapping survey_to_section_mapping_survey_fkey; Type: FK CONSTRAINT; Schema: public; Owner: digitallabsadmin
 --
 
 ALTER TABLE ONLY public.survey_to_section_mapping
     ADD CONSTRAINT survey_to_section_mapping_survey_fkey FOREIGN KEY (survey) REFERENCES public.surveys(id) ON UPDATE CASCADE ON DELETE CASCADE;
-
-
---
--- Name: user_to_course_mapping user_to_course_mapping_course_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
---
-
-ALTER TABLE ONLY public.user_to_course_mapping
-    ADD CONSTRAINT user_to_course_mapping_course_fkey FOREIGN KEY (course) REFERENCES public.courses(id) ON UPDATE CASCADE ON DELETE CASCADE;
-
-
---
--- Name: user_to_course_mapping user_to_course_mapping_user_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
---
-
-ALTER TABLE ONLY public.user_to_course_mapping
-    ADD CONSTRAINT user_to_course_mapping_user_fkey FOREIGN KEY ("user") REFERENCES public.users(id) ON UPDATE CASCADE ON DELETE CASCADE;
-
-
---
--- Name: user_to_organisation_mapping user_to_organisation_mapping_organisation_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
---
-
-ALTER TABLE ONLY public.user_to_organisation_mapping
-    ADD CONSTRAINT user_to_organisation_mapping_organisation_fkey FOREIGN KEY (organisation) REFERENCES public.organisations(id) ON UPDATE CASCADE ON DELETE CASCADE;
-
-
---
--- Name: user_to_organisation_mapping user_to_organisation_mapping_scope_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
---
-
-ALTER TABLE ONLY public.user_to_organisation_mapping
-    ADD CONSTRAINT user_to_organisation_mapping_scope_fkey FOREIGN KEY (scope) REFERENCES public.organisation_scopes(id) ON UPDATE CASCADE ON DELETE CASCADE;
-
-
---
--- Name: user_to_organisation_mapping user_to_organisation_mapping_user_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
---
-
-ALTER TABLE ONLY public.user_to_organisation_mapping
-    ADD CONSTRAINT user_to_organisation_mapping_user_fkey FOREIGN KEY ("user") REFERENCES public.users(id) ON UPDATE CASCADE ON DELETE CASCADE;
-
-
---
--- Name: user_to_plan_mapping user_to_plan_mapping_plan_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
---
-
-ALTER TABLE ONLY public.user_to_plan_mapping
-    ADD CONSTRAINT user_to_plan_mapping_plan_fkey FOREIGN KEY (plan) REFERENCES public.plans(id) ON UPDATE CASCADE ON DELETE CASCADE;
-
-
---
--- Name: user_to_plan_mapping user_to_plan_mapping_user_fkey; Type: FK CONSTRAINT; Schema: public; Owner: coops
---
-
-ALTER TABLE ONLY public.user_to_plan_mapping
-    ADD CONSTRAINT user_to_plan_mapping_user_fkey FOREIGN KEY ("user") REFERENCES public.users(id) ON UPDATE CASCADE ON DELETE CASCADE;
 
 
 --

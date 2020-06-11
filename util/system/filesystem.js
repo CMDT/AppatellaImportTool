@@ -8,6 +8,7 @@ const definitions = {
     configFileName: 'config.json',
     courseSelectionFilename: 'courses' + this.outputFileExtension,
     readmeFilename: 'readme.md',
+    schemaFilename: 'schema.sql',
     functionDescriptionFilename : 'function.md',
     snapshotDirectory: "./snapshots",
     reservedDirectory: "/reserved",

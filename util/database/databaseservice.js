@@ -1,14 +1,12 @@
 'use strict';
 
 var { Pool } = require('pg');
-var pgtools = require('pgtools');
+
 const copyTo = require('pg-copy-streams').to;
 const copyFrom = require('pg-copy-streams').from;
 const format = require('pg-format');
 const fs = require('fs-extra');
-var debug = require('debug');
-var log = debug('app:log');
-var error = require('../error/error');
+var dblocal = require('./dblocal');
 
 var THE_POOL = null;
 var THE_CONFIG = null;
@@ -19,12 +17,19 @@ var THE_CONFIG = null;
  * we assume that the dabase is on localhost
  * @param {*} url 
  */
-async function initialise(name) {
+async function initialise(name , schemaPath) {
   // see : https://node-postgres.com/features/connecting
 
   // remove all connections to the DB
   if (THE_POOL) {
-    await THE_POOL.end();
+    try{
+      await THE_POOL.end();
+    }catch(e){
+      console.log("problem finishing the connection pool: " + JSON.stringify(e));
+    }
+    finally{
+      THE_POOL = null;
+    }
   }
 
   THE_CONFIG = {
@@ -34,21 +39,22 @@ async function initialise(name) {
   };
   
   try{
-    await pgtools.dropdb(THE_CONFIG, THE_CONFIG.database);
+    await dblocal.drop(name);
   }catch(err){
-    throw (new Error("Error removing the old database: \n" + err.message));
+      throw (new Error("Error removing the old database: \n" + err.message));
   }
 
+
+
   try{
-    await pgtools.createdb(THE_CONFIG, THE_CONFIG.database);
+    await dblocal.create(name, schemaPath);
   }catch(err){
-    throw (new Error("Error creating the new database: \n" + err.message));
+    throw (new Error("Error uploading the schema: \n" + err.message));
   }
 
   THE_POOL = new Pool(THE_CONFIG);
  
 };
-
 
 
 
@@ -134,7 +140,6 @@ var multiQuery = async function (queries) {
   return results;
 
 }
-
 
 
 
