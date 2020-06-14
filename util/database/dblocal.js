@@ -40,7 +40,7 @@ function create(destination, username, password, schemaPath) {
                     pArgs.push('-d');
                     pArgs.push(`${destination}`); // name of db
 
-                    const cat = spawn('cat', [`${schemaPath}`]);
+                    const cat = spawn('cat', [`${schemaPath}`], {env: process.env});
                     const imp = spawn('psql', pArgs, { env: process.env });
                     cat.stdout.pipe(imp.stdin);
         
