@@ -17,18 +17,16 @@ var THE_CONFIG = null;
  * we assume that the dabase is on localhost
  * @param {*} url 
  */
-async function initialise(name , schemaPath) {
+async function initialise(name, schemaPath) {
   // see : https://node-postgres.com/features/connecting
 
   // remove all connections to the DB
   if (THE_POOL) {
-    try{
+    try {
       await THE_POOL.end();
-    }catch(e){
-      console.log("problem finishing the connection pool: " + JSON.stringify(e));
-    }
-    finally{
       THE_POOL = null;
+    } catch (e) {
+      throw (new Error("problem finishing the connection pool: " + + JSON.stringify(e)));
     }
   }
 
@@ -37,23 +35,23 @@ async function initialise(name , schemaPath) {
     database: name,
     ssl: false
   };
-  
-  try{
+
+  try {
     await dblocal.drop(name);
-  }catch(err){
-      throw (new Error("Error removing the old database: \n" + err.message));
+  } catch (err) {
+    throw (new Error("Error removing the old database: \n" + err.message));
   }
 
 
 
-  try{
+  try {
     await dblocal.create(name, schemaPath);
-  }catch(err){
+  } catch (err) {
     throw (new Error("Error uploading the schema: \n" + err.message));
   }
 
   THE_POOL = new Pool(THE_CONFIG);
- 
+
 };
 
 
@@ -357,9 +355,13 @@ async function copyFilesToTables(directory) {
   let files = fs.readdirSync(directory)
 
   for (let file of files) {
+
     console.log("FILE TO DB: Writing ", file, " to Database");
-    var tableName = file.split(".")[0];
-    if (file.split(".")[1] != "sql") {
+    var name_ext = file.split(".");
+
+    if (name_ext.length > 1 && name_ext[1] == "csv") {
+      var tableName = name_ext[0];
+
       await new Promise(function (resolve, reject) { //push file to table
         THE_POOL.connect().then(client => {
 
@@ -371,7 +373,7 @@ async function copyFilesToTables(directory) {
 
           let err = function (err) {
             console.log(err);
-            //reject(err);
+            client.release();
             resolve();
           }
           client.query("set session_replication_role = 'replica';")
@@ -382,6 +384,7 @@ async function copyFilesToTables(directory) {
           fileStream.pipe(stream);
         });
       })
+
     }
   }
 }

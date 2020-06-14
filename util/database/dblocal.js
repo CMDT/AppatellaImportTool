@@ -3,7 +3,7 @@ const { spawn } = require('child_process');
 const DB_BUILD_TIME_MS = 2000;
 
 
-function createdb(destination, schemaPath) {
+function create(destination, schemaPath) {
     return new Promise(
         function (resolve, reject) {
 
@@ -13,7 +13,7 @@ function createdb(destination, schemaPath) {
                 console.log('create process exited with ' +
                     `code ${code} and signal ${signal}`);
                 if(code != 0){
-                    reject(new Error("errors trying to create the DB. It may not have been dropped properly"));
+                    reject(new Error("Errors trying to create the DB. It may not have been dropped properly"));
                 }else{
                     const cat = spawn('cat', [schemaPath]);
                     const imp = spawn('psql', [destination]);
@@ -33,7 +33,7 @@ function createdb(destination, schemaPath) {
 }
 
 
-function dropdb(name) {
+function drop(name) {
     return new Promise(
         function (resolve, reject) {
 
@@ -54,6 +54,6 @@ function dropdb(name) {
 
 
 module.exports = {
-    create: createdb,
-    drop: dropdb
+    create: create,
+    drop: drop
 };
