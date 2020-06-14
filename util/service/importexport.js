@@ -14,7 +14,13 @@ const schemaFilename = fsdef.schemaFilename;
 const snapshotDirectory = fsdef.snapshotDirectory;
 const importedDirectory = fsdef.importedDirectory; // directory in which to upload snapshot data
 
-exports.postImport = async function (source_path, secret, destination_db) {
+exports.postImport = async function (
+  source_path, 
+  secret, 
+  destination_db,
+  destination_username,
+  destination_password
+  ) {
 
   if(!fs.existsSync(source_path)){
     throw(errorApi.create404Error(source_path));
@@ -43,7 +49,7 @@ exports.postImport = async function (source_path, secret, destination_db) {
 
   console.log("dropping and re-creating local DB");
   try{
-    await dbApi.initialise(destination_db, schemaPath);
+    await dbApi.initialise(destination_db, destination_username, destination_password, schemaPath);
   }catch(err){
     throw(errorApi.create500Error("Error creating database: \n" + err.message));
   }

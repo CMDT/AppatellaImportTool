@@ -17,7 +17,7 @@ var THE_CONFIG = null;
  * we assume that the dabase is on localhost
  * @param {*} url 
  */
-async function initialise(name, schemaPath) {
+async function initialise(name, username, password, schemaPath) {
   // see : https://node-postgres.com/features/connecting
 
   // remove all connections to the DB
@@ -33,19 +33,24 @@ async function initialise(name, schemaPath) {
   THE_CONFIG = {
     host: 'localhost',
     database: name,
+    user: username,
+    password, password,
     ssl: false
   };
 
+
+  
+
   try {
-    await dblocal.drop(name);
+    await dblocal.drop(name, username, password);
   } catch (err) {
     throw (new Error("Error removing the old database: \n" + err.message));
   }
 
 
 
-  try {
-    await dblocal.create(name, schemaPath);
+    try {
+    await dblocal.create(name, username, password, schemaPath);
   } catch (err) {
     throw (new Error("Error uploading the schema: \n" + err.message));
   }

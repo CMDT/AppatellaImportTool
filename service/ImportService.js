@@ -15,9 +15,15 @@ exports.postImport = function(args, res, next) {
   var source_path = args.source_path.value;
   var secret = args.secret.value;
   var destination_db = args.destination_db.value;
+  var destination_username = args.destination_username.value;
+  var destination_password = args.destination_password.value;
 
   
-  importexport.postImport(source_path, secret, destination_db)
+  importexport.postImport(  source_path, 
+    secret, 
+    destination_db,
+    destination_username,
+    destination_password)
     .then((result) => {
       httpUtil.endHttpOK(result, res);
     })

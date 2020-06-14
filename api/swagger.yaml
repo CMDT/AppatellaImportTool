@@ -37,6 +37,16 @@ paths:
         description: "The name of the destination database. If it exists, the database will be dropped, and a new one created, to hold the new data."
         required: true
         type: "string"
+      - name: "destination_username"
+        in: "query"
+        description: "The username you are using to connect to the database"
+        required: true
+        type: "string"
+      - name: "destination_password"
+        in: "query"
+        description: "The password you are using to connect to the database. This is unencrypted, and only OK for use on the local machine."
+        required: true
+        type: "string"
       responses:
         "200":
           description: "Status 200"
