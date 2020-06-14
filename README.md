@@ -65,8 +65,26 @@ http://localhost:8000/docs/
 
 ## Importing to your 'local' DB
 
-1. In the Appatella Import Tool page, press 'POST' import
-2. 
+1. You will need to remember you orginal username and pasword
+2. In the Appatella Import Tool page, press 'POST' /import/
+3. Fill in the following fields:
+    1. source_path: the full path to your downloaded, encrypted file.
+    1. secret: the password you attached to the exported file.
+    1. destination_db: the name of the database to create.
+    1. username: the username you created Postgres with.
+    1. password: the password you create your Postgres username with.
+4. Press 'Try it out!'
+5. If everything went OK, the 'Response Code' should be 200. If not, the Response Body will contain some error information.
+6. You can now start DBeaver, and connect to the database.
+
+
+## Finally
+Your export available to you by the consent of of the person to whom it belongs. 
+General Data Protection Regulations in the UK mandate that this consent can be revoked at any time.
+This mean you must be prepared to delete this export and any other associated files which may identify an individual on request.
+Your export is tracked by Appatella - check your user account regularly for revokation updates when you have exported.
+When you have finished your analysis, you may keep any aggregated data which does not identify individuals.
+You must delete the export, and remove the export record from your Appatella user account, to avoid confusion or unnecessary auditing.
 
 
 
