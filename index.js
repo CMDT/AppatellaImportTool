@@ -207,7 +207,6 @@ var initialise = function () {
   var http = require('http');
   var swaggerTools = require('swagger-tools');
   var jsyaml = require('js-yaml');
-  var database = require('./util/database/database');
   var data = require('./util/data/data');
 
   // swaggerRouter configuration
