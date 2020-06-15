@@ -44,6 +44,8 @@ exports.postImport = async function (
   destination_password
 ) {
 
+  console.log("starting import");
+
   if (!fs.existsSync(source_path)) {
     throw (errorApi.create404Error(source_path));
   }
@@ -92,6 +94,7 @@ exports.postImport = async function (
   } catch (err) {
     throw (errorApi.create500Error("Error clearing old files: \n" + err.message));
   }
+  console.log("done.");
 
 }
 
