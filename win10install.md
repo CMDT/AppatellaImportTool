@@ -37,8 +37,8 @@ NodeJS runs websites. The Appatella Import tool is actually a simple webpage and
         * npm package manager
         * Online documentation shortcuts
         * Add to PATH
-    1. Tools for native modules: all the default
-        * YES: install the necessary tools 
+    1. Tools for native modules: 
+        * (Optional) - Appatella doesn't need this. It takes ages and often needs help to complete, but you'll get a more complete installation of Node if you select and install.
 1. Allow Node.js installer to install the necessary files.
 1. Afterwards, a terminal window will pop-up,to install the 'Native Modules'. 
     1. Allow this to run (press any key to continue...)
