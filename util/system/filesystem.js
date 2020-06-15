@@ -10,7 +10,7 @@ const definitions = {
     readmeFilename: 'readme.md',
     schemaFilename: 'schema.sql',
     functionDescriptionFilename : 'function.md',
-    snapshotDirectory: "./snapshots",
+    snapshotDirectory: process.cwd() + "/snapshots",
     reservedDirectory: "/reserved",
     exportedDirectory: "/exported", // directory in which to export snapshot data
     importedDirectory: "/imported", // directory in which to upload snapshot data
