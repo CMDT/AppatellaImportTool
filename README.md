@@ -4,8 +4,8 @@ Based on AppatellaResearchAPI V 0.0.42.
 
 **Please note: the Appatella Export facility produces a single data file which is encrypted. The data within is pertinent to individuals. It is conformant to GDPR consent and revocation. You must be aware of your legal obligations in handling this data. If in doubt DO NOT extract.**
 
-This tool is provided to help you import indiviual data from Appatella into a local Postgres database. 
-During the import process, encrypted data is extracted, and will be stored on your computer momentarily before being destroyed.
+This tool is provided to help you import individual data from Appatella into a local Postgres database. 
+During the import process, encrypted data is extracted as files, which will be stored on your computer momentarily before being destroyed.
 
 For this reason, it's vital that your computer has an encrypted filesystem. More information is below.
 
@@ -37,7 +37,7 @@ Once these basics have been installed:
     Indicating that it is waiting for a browser to connect.
 1. Start your web-browser, and paste the following into the address bar:
 ```bash
-http://localhost:8004/docs/
+http://localhost:8000/docs/
 ```
 1. You should now see the Appatella Import Tool page.
 

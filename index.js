@@ -16,6 +16,7 @@ var fs = require('fs-extra');
 
 
 
+
 var getSwaggerUIConfig = function(){
   var result = {};
 
@@ -208,6 +209,10 @@ var initialise = function () {
   var swaggerTools = require('swagger-tools');
   var jsyaml = require('js-yaml');
   var data = require('./util/data/data');
+  var cors = require ('cors');
+
+
+  app.use(cors());
 
   // swaggerRouter configuration
   var options = {
@@ -233,6 +238,7 @@ var initialise = function () {
     swaggerDocResolve.summary.address,
     swaggerDocResolve.summary.port);
 
+ 
 
   // Initialize the Swagger middleware
   swaggerTools.initializeMiddleware(swaggerDoc, function (middleware) {
@@ -265,9 +271,8 @@ var initialise = function () {
 
 // this is for unhandled async rejections. See https://blog.risingstack.com/mastering-async-await-in-nodejs/
 process.on('unhandledRejection', (err) => {
-  console.log("GOT HERE !!!");
   console.error(err);
-  // process.exit(1);
+  process.exit(1);
 });
 
 

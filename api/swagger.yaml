@@ -7,7 +7,7 @@ info:
   contact:
     name: "DigitalLabs@MMU"
     email: "l.cooper@mmu.ac.uk"
-host: "localhost:8004"
+host: "localhost:8000"
 basePath: "/apis"
 schemes:
 - "http"
