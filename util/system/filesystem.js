@@ -1,5 +1,4 @@
 'use strict';
-const mkdirp = require('mkdirp');
 const fs = require('fs-extra');
 
 const definitions = {
@@ -17,23 +16,8 @@ const definitions = {
     workingDirectory: "/working", // directory in which to put function-specific working files.
 }
 
-
-const zipExtension = definitions.zipExtension;
-
-const configFileName = definitions.configFileName;
-const readmeFilename = definitions.readmeFilename;
-const functionDescriptionFilename = definitions.functionDescriptionFilename;
-
-
 const snapshotDirectory = definitions.snapshotDirectory;
-const reservedDirectory = definitions.reservedDirectory;
-const exportedDirectory = definitions.exportedDirectory; // directory in which to export snapshot data
 const importedDirectory = definitions.importedDirectory; // directory in which to upload snapshot data
-const workingDirectory = definitions.workingDirectory; // directory in which to put function specific files use as working data for the export 
-
-
-
-const export_request_prefix = definitions.export_request_prefix;
 
 
 function initialise(){
@@ -41,8 +25,6 @@ function initialise(){
     function createStructure() {
       // ... and rebuild an empty structure
       fs.mkdirSync(snapshotDirectory);
-      fs.mkdirSync(snapshotDirectory + reservedDirectory);
-      fs.mkdirSync(snapshotDirectory + exportedDirectory);
       fs.mkdirSync(snapshotDirectory + importedDirectory);
     }
   

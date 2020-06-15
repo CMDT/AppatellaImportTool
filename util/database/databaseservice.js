@@ -523,16 +523,6 @@ async function exportQueriesToFiles(preparedQueries, tempTableSpec, tempTableDat
 
 module.exports = {
   initialise: initialise,
-  createTableSpec: createTableSpec,
-  createTextColumnSpecs: createTextColumnSpecs,
-  createColumnSpec: createColumnSpec,
-  query: query,
-  multiQuery: multiQuery,
-  createTabularQuery: createTabularQuery,
-  multiTabularQuery: multiTabularQuery,
-  copyFilesToTables: copyFilesToTables,
-  singleQueryToFile: singleQueryToFile,
-  exportQueriesToFiles: exportQueriesToFiles,
-  createDelimitedTableContent: createDelimitedTableContent
+  copyFilesToTables: copyFilesToTables
 
 };

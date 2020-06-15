@@ -41,8 +41,8 @@ NodeJS runs websites. The Appatella Import tool is actually a simple webpage and
         * YES: install the necessary tools 
 1. Allow Node.js installer to install the necessary files.
 1. Afterwards, a terminal window will pop-up,to install the 'Native Modules'. 
-    1. Allow this to run (press any key to continue...) See note Below
-    1. This application will attemtp to connect to a website to download packages. You may get an error. If so, take a look at the note at the end of this article.
+    1. Allow this to run (press any key to continue...)
+    1. This application will attempy to connect to a website to download packages. You may get an error. If so, take a look at the note at the end of this article.
 
 ### Chrome Browser
 
@@ -87,7 +87,7 @@ For Windows 10, we use DBeaver.
     
     
 ### Hardening
-This tool will populate your Postgres datbase with data exported from Appatella. 
+The Appatella Import Tool will populate your Postgres database with data exported from Appatella. 
 This is data on individuals, for which you are responsible, under GDPR (or the data protection regulations for your nation)
 There is excellent information to be found on the [ICO website](https://ico.org.uk/for-organisations/guide-to-data-protection/introduction-to-data-protection/some-basic-concepts/) 
 
@@ -99,25 +99,11 @@ You need to protect yourself and the individuals for whose data you are reponsib
 
 ##### 1. Limiting access to the running computer
 By default, your database is set-up to allow only connections from the computer running the database. This is known as 'localhost'. 
-If you want to know more about accessing the database from other computers on your network, start your investigations by searching for 'pg_hba.conf'.
 
 ##### 1. Limiting access to specific users
-This tool enables access to your database by the default user (postgres). You will need to protect your database, by adding a [password](https://www.ncsc.gov.uk/blog-post/three-random-words-or-thinkrandom-0) .
-
-
-With a connection now established to Postgres at the psql prompt, issue the ALTER USER command to change the password for the postgres user:
-
-postgres=# ALTER USER postgres PASSWORD 'myPassword';
-ALTER ROLE
-If successful, Postgres will output a confirmation of ALTER ROLE as seen above.
-
-Finally, exit the psql client by using the \q command.
-
-postgres=# \q
-You’re all done. The default postgres user now has a password associated with the account for use in your other applications.
+This tool enables access to your database by the default user (postgres). You will have set access to this user only at installation, by use of a strong password. 
 
 ##### Enabling encryption in-place
-
 Windows 10 provides [encryption facilities](https://support.microsoft.com/en-us/help/4028713/windows-10-turn-on-device-encryption) to prevent access to data in the event of theft of your computer.
 It's essential that you ensure these are enabled.
 Some Windows 10 devices come with encryption turned on by default, and you can check this by going to Settings > System > About and scrolling down to “Device Encryption.” 

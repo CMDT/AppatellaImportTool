@@ -2,7 +2,7 @@
 swagger: "2.0"
 info:
   description: "This tool imports an encrypted Appatella export file into a Postgres database. See the [README.md](https://github.com/CMDT/AppatellaImportTool/blob/master/README.md) file for details."
-  version: "1.5.0"
+  version: "0.0.1"
   title: "Appatella Import Tool"
   contact:
     name: "DigitalLabs@MMU"
@@ -16,8 +16,8 @@ paths:
     post:
       tags:
       - "import"
-      summary: "Import a previously exported research snapshot into the connected research database"
-      description: "Requires a snapshot zip and the encryption secret for decryption before pushing into an empty, available research database"
+      summary: "Import a previously exported research snapshot into a local database."
+      description: "Requires a snapshot zip and the encryption secret for decryption. WARNING the specified local database will be destroyed, before import."
       operationId: "postImport"
       consumes:
       - "application/json"
@@ -44,7 +44,7 @@ paths:
         type: "string"
       - name: "destination_password"
         in: "query"
-        description: "The password you are using to connect to the database. This is unencrypted, and only OK for use on the local machine."
+        description: "The password you are using to connect to the database. WARNING: Not masked. The password is visble."
         required: true
         type: "string"
       responses:

@@ -1,8 +1,7 @@
 const { spawn } = require('child_process');
+const fs = require('fs-extra');
 
 const DB_BUILD_TIME_MS = 2000;
-
-
 
 function create(destination, username, password, schemaPath) {
     return new Promise(
@@ -15,17 +14,8 @@ function create(destination, username, password, schemaPath) {
             cArgs.push(`${username}`)
             cArgs.push(`-w`); //no password - it's in env variable
             cArgs.push(`${destination}`); // db to create
-            
 
             const create = spawn('createdb', cArgs, { env: process.env });
-
-            create.stdout.on('data', (data) => {
-                console.log(`create: stdout:\n${data}`);
-            });
-
-            create.stderr.on('data', (data) => {
-                console.error(`create: stderr:\n${data}`);
-            });
 
             create.on('exit', function (code, signal) {
                 console.log('create process exited with ' +
@@ -40,25 +30,17 @@ function create(destination, username, password, schemaPath) {
                     pArgs.push('-d');
                     pArgs.push(`${destination}`); // name of db
 
-                    const cat = spawn('cat', [`${schemaPath}`], {
-                        env: process.env,
-                        cwd: process.cwd()
-                    });
-                    const imp = spawn('psql', pArgs, { env: process.env });
-                    cat.stdout.pipe(imp.stdin);
-        
-                    cat.stderr.on('data', (data) => {
-                        console.error(`cat: stderr:\n${data}`);
-                    });
+                    var readStream = fs.createReadStream(schemaPath);
 
-                    cat.on('exit', function (code, signal) {
-                        console.log('cat process exited with ' +
-                            `code ${code} and signal ${signal}`);
-                        if (code != 0) {
-                            reject(new Error("errors trying to submit to files to DB"));
-                        } else {
-                            setTimeout(resolve, DB_BUILD_TIME_MS); // wait for DB to settle before continuing.
-                        }
+                    const imp = spawn('psql', pArgs, { env: process.env });
+                    readStream.pipe(imp.stdin);
+
+                    readStream.on('error', function (err) {
+                        reject(new Error("error loading schema file."));
+                    });
+                    readStream.on('end', function (args) {
+                        console.log('completed schema read');
+                        setTimeout(resolve, DB_BUILD_TIME_MS); // wait for DB to settle before continuing.
                     });
                 }
             });
@@ -77,18 +59,12 @@ function drop(name, username, password) {
             process.env["PGPASSWORD"] = password;
 
             const drop = spawn('dropdb', args, { env: process.env });
-            drop.stdout.on('data', (data) => {
-                console.log(`drop: stdout:\n${data}`);
-            });
 
-            drop.stderr.on('data', (data) => {
-                console.error(`drop: stderr:\n${data}`);
-            });
             drop.on('exit', function (code, signal) {
                 console.log('drop process exited with ' +
                     `code ${code} and signal ${signal}`);
                 if (code != 0) {
-                    reject(new Error("couldn't drop the old database. Are you connected using another app?"));
+                    reject(new Error("couldn't drop the old database. Check no other apps are connected."));
                 } else {
                     resolve();
                 }

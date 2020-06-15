@@ -20,11 +20,10 @@ Your postgres database will protect you and the individuals for whose data you a
 1. Ensuring there can be no access to the data, via other means; encryption in-place.
 
 ##### 1. Limiting access to the running computer
-Your database is set-up to allow only connections from the computer running the database. This is know as 'localhost'. 
-If you want to know more about accessing the databse from other computers on you network, start your investigations by searching for 'pg_hba.conf'.
+By default, your database is set-up to allow only connections from the computer running the database. This is known as 'localhost'. 
 
 ##### 1. Limiting access to specific users
-This tool enables access to your database by the default user (postgres). You will need to protect your database, by adding a [password](https://www.ncsc.gov.uk/blog-post/three-random-words-or-thinkrandom-0) .
+This tool enables access to your database by the default user (postgres). You will have set access to this user only at installation, by use of a strong password. 
 
 ##### Enabling encryption in-place
 All modern Macs (since about 2003) have a feature called FileVault that encrypts your entire system drive. Just open your Mac’s System Preferences, head to Security & Privacy and select the FileVault tab. Click the “Turn On FileVault” button to create a password and begin the encryption process. Store your key in a safe place (not on that computer) in case you ever get locked out.

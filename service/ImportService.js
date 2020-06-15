@@ -9,6 +9,8 @@ var importexport = require('../util/service/importexport');
  * source_path: string: the local path of the 7-zip encoded, AES256 encypted file to be imported
  * secret: string: the password used when exporting the file
  * destination_db: the name of the DB to be imported to.
+ * destination_username: the username of the user granted access to the database
+ * destination_password: the password for the user
  */
 exports.postImport = function(args, res, next) {
 

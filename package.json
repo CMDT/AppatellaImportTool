@@ -1,7 +1,7 @@
 {
-  "name": "appatella-research-api",
-  "version": "1.5.0",
-  "description": "This API allows access to the database for research purposes. Access is restricted. If you have a research account, you will be able to export only those courses for which you have permission. These courses will be further anonymmised.",
+  "name": "appatella-import-tool",
+  "version": "0.0.1",
+  "description": "A tool for creating and importing local Postgres databases for Appatella exported data.",
   "main": "index.js",
   "scripts": {
     "prestart": "npm install",
@@ -10,7 +10,7 @@
   "keywords": [
     "swagger"
   ],
-  "license": "Unlicense",
+  "license": "MIT",
   "private": true,
   "dependencies": {
     "7zip-bin": "^5.0.3",
