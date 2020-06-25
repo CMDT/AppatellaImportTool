@@ -1,6 +1,6 @@
 {
   "name": "appatella-import-tool",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "A tool for creating and importing local Postgres databases for Appatella exported data.",
   "main": "index.js",
   "scripts": {
